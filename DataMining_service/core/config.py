@@ -12,12 +12,12 @@ class Configs(BaseSettings):
     # ------------ БД ------------
     DB_HOST: Optional[str] = Field(default="localhost", env="DB_HOST")
     DB_PORT: Optional[int] = Field(default=5432, env="DB_PORT")
-    DB_USER: Optional[str] = Field(default="postgres", env="DB_USER")
-    DB_NAME: Optional[str] = Field(default="timofeymac", env="DB_NAME")
-    DB_PASS: Optional[str] = Field(default="admin", env="DB_PASS")
+    DB_USER: Optional[str] = Field(default="admin", env="DATABASE_USERNAME")
+    DB_NAME: Optional[str] = Field(default="DecodeAI", env="DATABASE_NAME")
+    DB_PASS: Optional[str] = Field(default="admin", env="DATABASE_PASSWORD")
 
     model_config = SettingsConfigDict(
-        env_file=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
+        env_file=os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.", ".env")
     )
 configs = Configs()
 

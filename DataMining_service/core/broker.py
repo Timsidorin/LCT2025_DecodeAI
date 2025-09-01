@@ -1,16 +1,8 @@
-# app/services/kafka_broker.py
 from faststream.kafka import KafkaBroker
 from typing import Optional, Any
 import json
-import logging
-from contextlib import asynccontextmanager
-
-logger = logging.getLogger(__name__)
-
 
 class KafkaBrokerManager:
-    """Управление подключением к Kafka """
-
     _instance: Optional['KafkaBrokerManager'] = None
 
     def __new__(cls, *args, **kwargs):
@@ -25,49 +17,25 @@ class KafkaBrokerManager:
             self._initialized = True
 
     async def connect(self):
-        """Установка соединения с Kafka"""
-        try:
-            self._broker = KafkaBroker(self.bootstrap_servers)
-        except Exception as e:
-            raise
+        self._broker = KafkaBroker(self.bootstrap_servers)
+        await self._broker.start()
 
     async def publish(self, topic: str, message: Any, key: Optional[str] = None):
-        """
-        Публикация сообщения в Kafka топик
-        """
         if self._broker is None:
             await self.connect()
 
-        try:
-            if not isinstance(message, (str, bytes)):
-                message = json.dumps(message)
+        if not isinstance(message, (str, bytes)):
+            message = json.dumps(message)
 
-            await self._broker.publish(
-                message=message,
-                topic=topic,
-                key=key
-            )
-            logger.debug(f"Message published to {topic}")
-        except Exception as e:
-            logger.error(f"Failed to publish message to {topic}: {e}")
-            raise
+        if key is not None and isinstance(key, str):
+            key = key.encode('utf-8')
 
-    async def start(self):
-        """Запуск брокера"""
-        if self._broker is None:
-            await self.connect()
-
-        await self._broker.start()
-        logger.info("Kafka broker started")
-
-    async def close(self):
-        """Закрытие соединения с Kafka"""
-        if self._broker:
-            await self._broker.close()
-            logger.info("Kafka connection closed")
-
+        await self._broker.publish(
+            message=message,
+            topic=topic,
+            key=key
+        )
 
     @property
     def is_connected(self) -> bool:
-        """Проверка подключения к Kafka"""
         return self._broker is not None

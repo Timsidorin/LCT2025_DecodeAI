@@ -1,17 +1,19 @@
-# app/main.py
+
+
+from fastapi import FastAPI, APIRouter
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.config import configs
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import uuid
 from datetime import datetime
-import logging
-
-from app.models import ReviewCreate, ReviewResponse
-from app.services.kafka_broker import KafkaBrokerManager
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from repository import RawReviewRepository
+from shemas.feedback import ReviewCreate,ReviewResponse
+from core.broker import KafkaBrokerManager
+from  core.database import get_async_session
 
 kafka_broker = KafkaBrokerManager() # Создаем экземпляр брокера
 
@@ -48,13 +50,13 @@ app.add_middleware(
 
 
 @app.post("/reviews",
-          response_model=ReviewResponse,
           status_code=status.HTTP_202_ACCEPTED,
           summary="Создать новый отзыв",
-          description="Принимает отзыв и публикует его в Kafka для дальнейшей обработки")
+          description="Принимает отзыв, публикует в Kafka и сохраняет в БД")
 async def create_review(
         review: ReviewCreate,
-        broker: KafkaBrokerManager = Depends(get_kafka_broker)
+        broker: KafkaBrokerManager = Depends(get_kafka_broker),
+        session: AsyncSession = Depends(get_async_session),
 ):
     try:
         review_id = str(uuid.uuid4())
@@ -63,87 +65,53 @@ async def create_review(
         kafka_message = {
             "id": review_id,
             "created_at": created_at.isoformat(),
-            **review.dict()
+            **review.model_dump()
         }
 
         # Публикуем сообщение в Kafka
         await broker.publish(
             topic="raw_reviews",
             message=kafka_message,
-            key=review_id
+            key=review_id.encode('utf-8')
+        )
+
+        repo = RawReviewRepository(session)
+        await repo.add_raw_review(
+            source_id=review.source_id,
+            text=review.text,
+            created_at=[created_at],
+            product=review.product,
+            rating=[str(review.rating)] if review.rating is not None else None,
         )
 
         response_data = {
-            "id": review_id,
+            "uuid": review_id,
             "created_at": created_at,
             "status": "accepted",
-            **review.dict()
+            **review.model_dump()
         }
-
         return response_data
 
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-
-
-@app.post("/reviews/batch",
-          status_code=status.HTTP_202_ACCEPTED,
-          summary="Создать несколько отзывов",
-          description="Принимает несколько отзывов и публикует их в Kafka для обработки")
-async def create_reviews_batch(
-        reviews: list[ReviewCreate],
-        broker: KafkaBrokerManager = Depends(get_kafka_broker)
-):
-    try:
-        results = []
-
-        for review in reviews:
-            review_id = str(uuid.uuid4())
-            created_at = datetime.now()
-            kafka_message = {
-                "id": review_id,
-                "created_at": created_at.isoformat(),
-                **review.dict()
-            }
-
-            await broker.publish(
-                topic="raw_reviews",
-                message=kafka_message,
-                key=review_id
-            )
-
-            results.append({
-                "id": review_id,
-                "status": "accepted"
-            })
-
-
-        return {"results": results}
 
     except Exception as e:
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
         )
 
-
-@app.get("/health")
-async def health_check(broker: KafkaBrokerManager = Depends(get_kafka_broker)):
-    return {
-        "status": "healthy",
-        "kafka_connected": broker.is_connected,
-        "timestamp": datetime.now().isoformat()
-    }
 
 @app.get("/")
 async def root():
     return {
         "message": "Pulse Review API",
-        "version": "1.0.0",
         "endpoints": {
             "Опубликовать отзыв": "/reviews",
             "Опубликовать пакет отзывов": "/reviews/batch",
-            "Проверить состояние сервиса": "/health"
         }
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host=configs.HOST, port=configs.PORT, reload=True)

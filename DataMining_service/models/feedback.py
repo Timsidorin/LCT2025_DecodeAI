@@ -1,28 +1,27 @@
 import uuid
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List
 
-from pydantic import UUID4
-from sqlalchemy import ForeignKey, JSON, Enum, text, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from core.database import Base
-import sqlalchemy as sa
+from sqlalchemy import Column, Integer, Text, DateTime, String, text
+from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.orm import declarative_base
 
+Base = declarative_base()
 
 
-
-
-class raw_reviews(Base):
+class RawReview(Base):
     """
-    Таблица 'сырых отзывов'
+    Модель для таблицы 'raw_reviews'
     """
-    __tablename__ = "reviews.raw_reviews"
-    uuid: Mapped[UUID4] = mapped_column(
-        UUID(as_uuid=True),
+    __tablename__ = "raw_reviews"
+
+    uuid = Column(
+        Integer,
         primary_key=True,
-        server_default=func.gen_random_uuid()
+        server_default=text("nextval('raw_reviews_id_seq'::regclass)")
     )
-    review_body: Mapped[str] = mapped_column(sa.Text, nullable=False)
-    product_name: Mapped[str] = mapped_column(sa.Text, nullable=False)
-    time_to_publish: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    source_id = Column(Integer, nullable=False)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+    product = Column(String)
+    rating = Column(ARRAY(String(1)))
