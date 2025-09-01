@@ -7,7 +7,7 @@ import os
 class Configs(BaseSettings):
     # ------------ Веб-сервер ------------
     HOST: str = "localhost"
-    PORT: int = 8002
+    PORT: int = 8004
 
     # ------------ БД ------------
     DB_HOST: Optional[str] = Field(default="localhost", env="DB_HOST")
