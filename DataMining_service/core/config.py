@@ -9,17 +9,6 @@ class Configs(BaseSettings):
     HOST: str = "localhost"
     PORT: int = 8002
 
-    # # ------------ Аутентификация ------------
-    # SECRET_KEY: str = Field(
-    #     default="your-secret-key", env="SECRET_KEY"
-    # )  # Секретный ключ для JWT и шифрования
-    # ALGORITHM: str = Field(
-    #     default="HS256", env="ALGORITHM"
-    # )  # Алгоритм шифрования для JWT
-    # ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
-    #     default=600000, env="ACCESS_TOKEN_EXPIRE_MINUTES"
-    # )  # Время жизни токена
-
     # ------------ БД ------------
     DB_HOST: Optional[str] = Field(default="localhost", env="DB_HOST")
     DB_PORT: Optional[int] = Field(default=5432, env="DB_PORT")

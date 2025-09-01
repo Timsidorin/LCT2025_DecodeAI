@@ -10,6 +10,9 @@ from core.database import Base
 import sqlalchemy as sa
 
 
+
+
+
 class raw_reviews(Base):
     """
     Таблица 'сырых отзывов'
