@@ -20,6 +20,10 @@ class KafkaBrokerManager:
         self._broker = KafkaBroker(self.bootstrap_servers)
         await self._broker.start()
 
+
+    async def close(self):
+        await self._broker.stop()
+
     async def publish(self, topic: str, message: Any, key: Optional[str] = None):
         if self._broker is None:
             await self.connect()
