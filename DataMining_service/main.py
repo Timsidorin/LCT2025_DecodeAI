@@ -51,7 +51,7 @@ async def get_review_service(
 
 # Маршруты
 @app.post(
-    "/reviews",
+    "/api/reviews",
     response_model=ReviewResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Создать новый отзыв",
