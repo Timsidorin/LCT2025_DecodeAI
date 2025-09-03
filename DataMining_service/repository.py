@@ -26,3 +26,5 @@ class RawReviewRepository:
         await self.session.commit()
         await self.session.refresh(raw_review)
         return raw_review
+
+
