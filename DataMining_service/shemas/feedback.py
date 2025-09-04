@@ -13,7 +13,7 @@ class SentimentType(str, Enum):
 class ReviewCreate(BaseModel):
     source_id: int = Field(..., description="ID источника отзыва", gt=0)
     text: str = Field(..., min_length=1, description="Текст отзыва")
-    rating: Optional[int] = Field(None, description="Рейтинг (число)")
+    rating: Optional[SentimentType] = Field(None, description="Рейтинг (число)")
     product: Optional[str] = Field(None, description="Название продукта")
     datetime_review:Optional[datetime]  = Field(None, description="Дата и время создания отзыва")
 

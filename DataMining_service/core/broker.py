@@ -1,5 +1,6 @@
 from faststream.kafka import KafkaBroker
 from typing import Optional, Any
+from  core.config import configs
 import json
 
 class KafkaBrokerManager:
@@ -10,9 +11,9 @@ class KafkaBrokerManager:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, bootstrap_servers: str = "localhost:9092"):
+    def __init__(self, bootstrap_server: str = configs.BOOTSTRAP_SERVICE):
         if not hasattr(self, '_initialized'):
-            self.bootstrap_servers = bootstrap_servers
+            self.bootstrap_servers = bootstrap_server
             self._broker: Optional[KafkaBroker] = None
             self._initialized = True
 

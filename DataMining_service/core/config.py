@@ -16,6 +16,10 @@ class Configs(BaseSettings):
     DB_NAME: Optional[str] = Field(default="DecodeAI", env="DATABASE_NAME")
     DB_PASS: Optional[str] = Field(default="admin", env="DATABASE_PASSWORD")
 
+    # ------------ Kafka ------------
+    BOOTSTRAP_SERVICE = Optional[str] = Field(default="localhost:9092", env="BOOTSTRAP_SERVICE")
+
+
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.", ".env")
     )
