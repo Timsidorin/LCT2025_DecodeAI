@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from auto_parser.ParserService import get_and_publish_reviews
 from core.config import configs
 from core.broker import KafkaBrokerManager
 from core.database import get_async_session
@@ -20,7 +21,7 @@ scheduler = AsyncIOScheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await kafka_broker.connect()
-    scheduler.add_job(run_me_every_minute, "interval", minutes=1)
+    scheduler.add_job(get_and_publish_reviews, "interval", minutes=3)
     scheduler.start()
     try:
         yield
