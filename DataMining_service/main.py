@@ -9,7 +9,7 @@ from core.config import configs
 from core.broker import KafkaBrokerManager
 from core.database import get_async_session
 from repository import RawReviewRepository
-from shemas.feedback import ReviewCreate, ReviewResponse
+from shemas.review import ReviewCreate, ReviewResponse
 from ReviewService import ReviewService
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -21,8 +21,8 @@ scheduler = AsyncIOScheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await kafka_broker.connect()
-    scheduler.add_job(get_and_publish_reviews, "interval", minutes=3)
-    scheduler.start()
+    #scheduler.add_job(get_and_publish_reviews, "interval", minutes=3)
+    #scheduler.start()
     try:
         yield
     finally:

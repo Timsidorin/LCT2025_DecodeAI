@@ -2,7 +2,7 @@ from fast_depends import Depends
 import ReviewService
 from ReviewParser import ReviewMonitor as RM
 from main import get_review_service
-from shemas.feedback import ReviewCreate
+from shemas.review import ReviewCreate
 import asyncio
 
 parser = RM()
@@ -22,6 +22,8 @@ async def get_and_publish_reviews():
                 product=None
             )
             await review_service.ReviewCreate(serialized_review)
+
+
 
 
 asyncio.run(get_and_publish_reviews())

@@ -5,7 +5,7 @@ from datetime import datetime
 from core.broker import KafkaBrokerManager
 
 from repository import RawReviewRepository
-from shemas.feedback import ReviewCreate, ReviewResponse
+from shemas.review import ReviewCreate, ReviewResponse
 
 
 class ReviewService:

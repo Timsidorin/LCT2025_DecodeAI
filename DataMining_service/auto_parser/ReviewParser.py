@@ -297,13 +297,11 @@ class ReviewMonitor:
 
         return result
 
-    def save_results(self, result, filename=None):
-        if not filename:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"new_reviews_{timestamp}.json"
 
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
-        return filename
+if __name__ =="__main__":
+    parser = ReviewMonitor()
+    result = parser.get_new_reviews()
+    print(result) if result else print("Новых отзывов не найдено!")
+
 
 
