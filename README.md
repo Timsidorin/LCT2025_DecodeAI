@@ -12,6 +12,7 @@
   
 ## Frontend
 - VueJS
+- Laravel
 
 ## ML
 -
