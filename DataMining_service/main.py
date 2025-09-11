@@ -8,7 +8,7 @@ from auto_parser.ParserService import get_and_publish_reviews
 from core.config import configs
 from core.broker import KafkaBrokerManager
 from core.database import get_async_session
-from repository import RawReviewRepository
+from repository import ReviewRepository
 from shemas.review import ReviewCreate, ReviewResponse
 from ReviewService import ReviewService
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -50,7 +50,7 @@ async def get_review_service(
     session: AsyncSession = Depends(get_async_session),
     broker: KafkaBrokerManager = Depends(lambda: kafka_broker)
 ) -> ReviewService:
-    repo = RawReviewRepository(session)
+    repo = ReviewRepository(session)
     return ReviewService(broker, repo)
 
 

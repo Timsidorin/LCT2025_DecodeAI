@@ -3,15 +3,14 @@ from uuid import uuid4
 from datetime import datetime
 
 from core.broker import KafkaBrokerManager
-
-from repository import RawReviewRepository
-from shemas.review import ReviewCreate, ReviewResponse
+from repository import ReviewRepository  # Используем ReviewRepository
+from shemas.review import ReviewCreate, ReviewResponse, SentimentType
 
 
 class ReviewService:
     """Бизнес-логика для работы с отзывами."""
 
-    def __init__(self, broker: KafkaBrokerManager, repo: RawReviewRepository):
+    def __init__(self, broker: KafkaBrokerManager, repo: ReviewRepository):
         self.broker = broker
         self.repo = repo
 
@@ -23,13 +22,14 @@ class ReviewService:
         # Публикуем в Kafka
         await self._publish_to_kafka(review_id, review, datetime_review)
 
-        # Сохраняем в БД
-        db_review = await self.repo.add_raw_review(
-            source_id=review.source_id,
+        db_review = await self.repo.add_review(
             text=review.text,
             datetime_review=datetime_review,
+            source=review.source,
             product=review.product,
-            rating=[str(review.rating)] if review.rating is not None else None,
+            rating=review.rating,
+            gender=review.gender,
+            city=review.city
         )
 
         # Формируем ответ
@@ -52,17 +52,28 @@ class ReviewService:
     def _build_response(self, db_review) -> ReviewResponse:
         """Построение ответа из объекта БД."""
         rating = None
-        if db_review.rating and db_review.rating[0]:
+        if db_review.rating:
             try:
-                rating = int(db_review.rating[0])
-            except (ValueError, IndexError):
+                rating = SentimentType(db_review.rating)
+            except ValueError:
                 rating = None
 
+        gender = None
+        if db_review.gender:
+            try:
+                from shemas.review import Gender
+                gender = Gender(db_review.gender)
+            except ValueError:
+                gender = None
+
         return ReviewResponse(
-            uuid=str(db_review.uuid),
-            source_id=db_review.source_id,
+            uuid=db_review.uuid,
+            source=db_review.source,
             text=db_review.text,
             rating=rating,
-            datetime_review=db_review.datetime_review,
             product=db_review.product,
+            gender=gender,
+            city=db_review.city,
+            datetime_review=db_review.datetime_review,
+            created_at=db_review.created_at
         )

@@ -12,6 +12,7 @@ async def get_and_publish_reviews():
     review_service = await get_review_service()
 
     result = parser.get_new_reviews()
+    print(result)
     if result:
         for review in result['reviews']:
             serialized_review = ReviewCreate(
@@ -21,9 +22,7 @@ async def get_and_publish_reviews():
                 rating=None,
                 product=None
             )
-            await review_service.ReviewCreate(serialized_review)
+            await review_service.create_review(serialized_review)
 
 
 
-
-asyncio.run(get_and_publish_reviews())
