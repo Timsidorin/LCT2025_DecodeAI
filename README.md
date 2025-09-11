@@ -8,7 +8,8 @@
 - FastAPI
 - PostgreSQL
 - ExpressJS
-- 
+- Kafka
+  
 ## Frontend
 - VueJS
 
