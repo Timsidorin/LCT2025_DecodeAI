@@ -7,6 +7,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from GEO_service.get_region import get_region_dadata
 import re
 from datetime import datetime
 
@@ -26,7 +27,9 @@ class ReviewParser:
         options.add_argument("--disable-extensions")
         options.add_experimental_option("prefs", {"profile.managed_default_content_settings.images": 2})
         self.driver = webdriver.Chrome(options=options)
-        self.driver.set_page_load_timeout(6)
+        self.driver.set_page_load_timeout(7)
+
+
 
     def normalize_date_to_datetime(self, date_text):
         if not date_text:
@@ -72,24 +75,74 @@ class ReviewParser:
 
         return None
 
-    def extract_text(self, url):
+    def extract_banki_review_data(self, url):
+        """Извлекает текст и город с детальной страницы банки.ру"""
         try:
             self.driver.get(url)
             time.sleep(0.8)
             parser = HTMLParser(self.driver.page_source)
-
-            for sel in ['[class*="ResponseText"]', 'div[class*="Text"] p']:
+            text = None
+            for sel in ['[class*="ResponseText"]', 'div[class*="Text"] p', '[class*="response-text"]']:
                 el = parser.css_first(sel)
                 if el and len(el.text()) > 50 and 'JavaScript' not in el.text():
-                    return el.text().strip()
+                    text = el.text().strip()
+                    break
 
-            for p in parser.css('p')[:3]:
-                t = p.text().strip()
-                if len(t) > 80 and any(w in t.lower() for w in ['банк', 'карт']):
-                    return t
-            return "Текст не найден"
+            if not text:
+                for p in parser.css('p')[:3]:
+                    t = p.text().strip()
+                    if len(t) > 80 and any(w in t.lower() for w in ['банк', 'карт']):
+                        text = t
+                        break
+
+            if not text:
+                text = "Текст не найден"
+            city = None
+            city_element = parser.css_first('.l3a372298')
+            if city_element:
+                city = city_element.text().strip()
+
+            if not city:
+                # Fallback поиск в блоке автора
+                author_block = parser.css_first('[class*="lf4cbd87d"]')
+                if author_block:
+                    spans = author_block.css('span')
+                    for span in spans:
+                        span_text = span.text().strip()
+                        if (span_text and
+                                len(span_text) < 50 and
+                                not span_text.startswith('user') and
+                                not span_text.isdigit() and
+                                re.match(r'^[А-Яа-яё\s\-]+$', span_text)):
+                            city = span_text
+                            break
+
+            return text, city
+
+        except Exception as e:
+            return "Ошибка извлечения данных", None
+
+    def extract_sravni_city(self, card_element):
+        """Извлекает город из карточки отзыва на sravni.ru"""
+        try:
+            card_text = card_element.text
+            city_patterns = [
+                r'г\.\s*([А-Яа-яё\-\s]+?)(?:\s|,|$)',
+                r'город\s+([А-Яа-яё\-\s]+?)(?:\s|,|$)',
+                r'\b([А-Яа-яё]{3,15})\b(?=\s*$|\s*\d|\s*[,.])'
+            ]
+
+            for pattern in city_patterns:
+                matches = re.findall(pattern, card_text)
+                if matches:
+                    city_candidate = matches[0].strip()
+                    if len(city_candidate) >= 3 and not any(
+                            x in city_candidate.lower() for x in ['банк', 'отзыв', 'карт']):
+                        return city_candidate
+
+            return None
         except:
-            return "Ошибка извлечения текста"
+            return None
 
     def get_banki_reviews(self, limit=5):
         self.setup_driver()
@@ -109,7 +162,8 @@ class ReviewParser:
             if title:
                 href = title.attributes.get('href', '')
                 full_url = f"https://www.banki.ru{href}"
-                text = self.extract_text(full_url)
+                text, city = self.extract_banki_review_data(full_url)
+                region_code = get_region_dadata(city) if city else None
 
                 date_match = re.search(r'(\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2})', elem.text())
                 datetime_review = None
@@ -120,10 +174,13 @@ class ReviewParser:
                     'text': text,
                     'datetime_review': datetime_review,
                     'source_id': 'banki.ru',
+                    'city': city,
+                    'region_code': region_code,
                     'url': full_url,
                     'position': i + 1
                 }
                 reviews.append(review)
+
         return reviews
 
     def expand_text(self, card):
@@ -160,6 +217,8 @@ class ReviewParser:
 
                 link_elem = card.find_element(By.CSS_SELECTOR, 'a[href*="/otzyvy/"]')
                 url = link_elem.get_attribute('href')
+                city = self.extract_sravni_city(card)
+                region_code = get_region_dadata(city) if city else None
 
                 self.expand_text(card)
 
@@ -194,6 +253,8 @@ class ReviewParser:
                     'text': text,
                     'datetime_review': datetime_review,
                     'source_id': 'sravni.ru',
+                    'city': city,
+                    'region_code': region_code,
                     'url': url,
                     'position': processed + 1
                 }
@@ -251,14 +312,50 @@ class ReviewMonitor:
         with open(self.storage_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
+    def initialize_state(self):
+        # Собираем первые 10 отзывов с каждого сайта
+        current = self.parser.get_reviews(banki_limit=10, sravni_limit=10)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"initial_reviews_{timestamp}.json"
+
+        initial_reviews = []
+        for source in ['banki.ru', 'sravni.ru']:
+            for review in current[source]:
+                initial_reviews.append({
+                    'text': review['text'],
+                    'datetime_review': review['datetime_review'],
+                    'source_id': review['source_id'],
+                    'city': review['city'],
+                    'region_code': review['region_code']
+                })
+
+        result = {
+            'reviews': initial_reviews,
+            'total_initial': len(initial_reviews),
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'type': 'initial_collection'
+        }
+
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+
+        banki_first_url = current['banki.ru'][0]['url'] if current['banki.ru'] else None
+        sravni_first_url = current['sravni.ru'][0]['url'] if current['sravni.ru'] else None
+        self.save_state(banki_first_url, sravni_first_url)
+        return result
+
     def get_new_reviews(self):
         state = self.load_state()
+
+        if state['banki_first_url'] is None and state['sravni_first_url'] is None:
+            return self.initialize_state()
         current = self.parser.get_reviews()
 
         new_reviews = []
         has_new = False
 
-        # Проверка banki.ru - если первый URL изменился, берем все текущие отзывы как новые
+        # Проверка banki.ru
         if current['banki.ru']:
             current_first_banki = current['banki.ru'][0]['url']
             if current_first_banki != state['banki_first_url']:
@@ -266,11 +363,12 @@ class ReviewMonitor:
                     new_reviews.append({
                         'text': review['text'],
                         'datetime_review': review['datetime_review'],
-                        'source_id': review['source_id']
+                        'source_id': review['source_id'],
+                        'city': review['city'],
+                        'region_code': review['region_code']
                     })
                     has_new = True
 
-        # Проверка sravni.ru - если первый URL изменился, берем все текущие отзывы как новые
         if current['sravni.ru']:
             current_first_sravni = current['sravni.ru'][0]['url']
             if current_first_sravni != state['sravni_first_url']:
@@ -278,30 +376,30 @@ class ReviewMonitor:
                     new_reviews.append({
                         'text': review['text'],
                         'datetime_review': review['datetime_review'],
-                        'source_id': review['source_id']
+                        'source_id': review['source_id'],
+                        'city': review['city'],
+                        'region_code': review['region_code']
                     })
                     has_new = True
 
         if not has_new:
             return None
-
         new_banki_first = current['banki.ru'][0]['url'] if current['banki.ru'] else state['banki_first_url']
         new_sravni_first = current['sravni.ru'][0]['url'] if current['sravni.ru'] else state['sravni_first_url']
         self.save_state(new_banki_first, new_sravni_first)
-
         result = {
             'reviews': new_reviews,
             'total_new': len(new_reviews),
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'type': 'new_reviews'
         }
-
         return result
 
 
-if __name__ =="__main__":
-    parser = ReviewMonitor()
-    result = parser.get_new_reviews()
-    print(result) if result else print("Новых отзывов не найдено!")
-
-
-
+if __name__ == "__main__":
+    monitor = ReviewMonitor()
+    result = monitor.get_new_reviews()
+    if result:
+        print(result)
+    else:
+        print("Новых отзывов не найдено!")

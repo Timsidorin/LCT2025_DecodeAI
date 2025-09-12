@@ -3,19 +3,19 @@ from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 from sqlalchemy import String, Text, DateTime, Enum as SQLEnum
+from enum import Enum as PyEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from core.database import Base
-import sqlalchemy as sa
 
 
-class SentimentTypeDB(sa.Enum):
+class SentimentTypeDB(PyEnum):
     POSITIVE = "positive"
     NEUTRAL = "neutral"
     NEGATIVE = "negative"
 
 
-class GenderDB(sa.Enum):
+class GenderDB(PyEnum):
     MALE = "male"
     FEMALE = "female"
 
@@ -42,18 +42,18 @@ class Review(Base):
         nullable=False,
         comment="Текст отзыва"
     )
-    rating: Mapped[Optional[str]] = mapped_column(
-        SQLEnum(SentimentTypeDB, name='sentiment_type'),
-        nullable=True,
-        comment="Тональность отзыва"
+
+    rating: Mapped[Optional[SentimentTypeDB]] = mapped_column(
+        SQLEnum(SentimentTypeDB),
+        nullable=True
     )
     product: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,
         comment="Название продукта"
     )
-    gender: Mapped[Optional[str]] = mapped_column(
-        SQLEnum(GenderDB, name='gender_type'),
+    gender: Mapped[Optional[GenderDB]] = mapped_column(
+        SQLEnum(GenderDB),
         nullable=True,
         comment="Пол автора отзыва"
     )
@@ -62,6 +62,13 @@ class Review(Base):
         nullable=True,
         comment="Город автора отзыва"
     )
+
+    region_code: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Регион (автоопределение)"
+    )
+
     datetime_review: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

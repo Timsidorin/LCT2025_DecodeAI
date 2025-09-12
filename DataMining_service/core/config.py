@@ -16,6 +16,9 @@ class Configs(BaseSettings):
     DB_NAME: Optional[str] = Field(default="DecodeAI", env="DATABASE_NAME")
     DB_PASS: Optional[str] = Field(default="admin", env="DATABASE_PASSWORD")
 
+    # ------------ GEO ------------
+    GEO_TOKEN:Optional[str] = Field(default="d0d89dc6706faf25fff3b1075a64743c4f20c867", env = "GEO_TOKEN")
+
     # ------------ Kafka ------------
     BOOTSTRAP_SERVICE: Optional[str] = Field(default="localhost:9092", env="BOOTSTRAP_SERVICE")
 
