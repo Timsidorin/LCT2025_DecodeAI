@@ -5,8 +5,7 @@ from uuid import uuid4, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from sqlalchemy.exc import IntegrityError
-from models.review import Review, SentimentTypeDB, GenderDB
-from shemas.review import SentimentType, Gender
+from models.review import Review
 
 
 class ReviewRepository:
@@ -19,8 +18,8 @@ class ReviewRepository:
             datetime_review: datetime,
             source: str = "API",
             product: Optional[str] = None,
-            rating: Optional[SentimentType] = None,
-            gender: Optional[Gender] = None,
+            rating: Optional[str] = None,
+            gender: Optional[str] = None,
             city: Optional[str] = None,
             region_code: Optional[str] = None  # Новое поле
     ) -> Optional[Review]:
@@ -38,23 +37,14 @@ class ReviewRepository:
             region_code: Код региона (необязательно)
         """
         try:
-            # Конвертируем enum в DB enum если нужно
-            db_rating = None
-            if rating:
-                db_rating = SentimentTypeDB(rating.value)
-
-            db_gender = None
-            if gender:
-                db_gender = GenderDB(gender.value)
-
             review = Review(
                 uuid=uuid4(),
                 source=source,
                 text=text,
                 datetime_review=datetime_review,
                 product=product,
-                rating=db_rating,
-                gender=db_gender,
+                rating=rating,
+                gender=gender,
                 city=city,
                 region_code=region_code
             )
@@ -82,35 +72,35 @@ class ReviewRepository:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
-    async def get_reviews(
-            self,
-            limit: int = 10,
-            offset: int = 0,
-            source: Optional[str] = None,
-            city: Optional[str] = None,
-            region_code: Optional[str] = None,
-            rating: Optional[SentimentType] = None
-    ) -> List[Review]:
-        """Получение отзывов с фильтрацией и пагинацией"""
-        query = select(Review)
-        if source:
-            query = query.where(Review.source == source)
-        if city:
-            query = query.where(Review.city == city)
-        if region_code:
-            query = query.where(Review.region_code == region_code)
-        if rating:
-            db_rating = SentimentTypeDB(rating.value)
-            query = query.where(Review.rating == db_rating)
-
-        # Сортировка по дате создания (новые сначала)
-        query = query.order_by(desc(Review.created_at))
-
-        # Пагинация
-        query = query.offset(offset).limit(limit)
-
-        result = await self.session.execute(query)
-        return result.scalars().all()
+    # async def get_reviews(
+    #         self,
+    #         limit: int = 10,
+    #         offset: int = 0,
+    #         source: Optional[str] = None,
+    #         city: Optional[str] = None,
+    #         region_code: Optional[str] = None,
+    #         rating: Optional[SentimentType] = None
+    # ) -> List[Review]:
+    #     """Получение отзывов с фильтрацией и пагинацией"""
+    #     query = select(Review)
+    #     if source:
+    #         query = query.where(Review.source == source)
+    #     if city:
+    #         query = query.where(Review.city == city)
+    #     if region_code:
+    #         query = query.where(Review.region_code == region_code)
+    #     if rating:
+    #         db_rating = SentimentTypeDB(rating.value)
+    #         query = query.where(Review.rating == db_rating)
+    #
+    #     # Сортировка по дате создания (новые сначала)
+    #     query = query.order_by(desc(Review.created_at))
+    #
+    #     # Пагинация
+    #     query = query.offset(offset).limit(limit)
+    #
+    #     result = await self.session.execute(query)
+    #     return result.scalars().all()
 
     async def get_reviews_by_source(self, source: str) -> List[Review]:
         """Получение всех отзывов по источнику"""
@@ -140,39 +130,39 @@ class ReviewRepository:
         result = await self.session.execute(query)
         return result.scalars().all()
 
-    async def update_review_analysis(
-            self,
-            review_id: str,
-            rating: Optional[str] = None,
-            gender: Optional[str] = None
-    ) -> Optional[Review]:
-        """Обновление результатов анализа отзыва"""
-        try:
-            review_uuid = UUID(review_id)
-            review = await self.get_review_by_uuid(review_uuid)
-
-            if not review:
-                return None
-
-            if rating:
-                try:
-                    review.rating = SentimentTypeDB(rating)
-                except ValueError:
-                    pass
-
-            if gender:
-                try:
-                    review.gender = GenderDB(gender)
-                except ValueError:
-                    pass
-
-            await self.session.commit()
-            await self.session.refresh(review)
-            return review
-
-        except (ValueError, IntegrityError):
-            await self.session.rollback()
-            return None
+    # async def update_review_analysis(
+    #         self,
+    #         review_id: str,
+    #         rating: Optional[str] = None,
+    #         gender: Optional[str] = None
+    # ) -> Optional[Review]:
+    #     """Обновление результатов анализа отзыва"""
+    #     try:
+    #         review_uuid = UUID(review_id)
+    #         review = await self.get_review_by_uuid(review_uuid)
+    #
+    #         if not review:
+    #             return None
+    #
+    #         if rating:
+    #             try:
+    #                 review.rating = SentimentTypeDB(rating)
+    #             except ValueError:
+    #                 pass
+    #
+    #         if gender:
+    #             try:
+    #                 review.gender = GenderDB(gender)
+    #             except ValueError:
+    #                 pass
+    #
+    #         await self.session.commit()
+    #         await self.session.refresh(review)
+    #         return review
+    #
+    #     except (ValueError, IntegrityError):
+    #         await self.session.rollback()
+    #         return None
 
     async def get_reviews_stats(self) -> dict:
         """Получение общей статистики по отзывам"""

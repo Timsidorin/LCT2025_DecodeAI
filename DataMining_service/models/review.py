@@ -2,22 +2,10 @@
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
-from sqlalchemy import String, Text, DateTime, Enum as SQLEnum
-from enum import Enum as PyEnum
+from sqlalchemy import String, Text, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from core.database import Base
-
-
-class SentimentTypeDB(PyEnum):
-    POSITIVE = "positive"
-    NEUTRAL = "neutral"
-    NEGATIVE = "negative"
-
-
-class GenderDB(PyEnum):
-    MALE = "male"
-    FEMALE = "female"
 
 
 class Review(Base):
@@ -43,19 +31,21 @@ class Review(Base):
         comment="Текст отзыва"
     )
 
-    rating: Mapped[Optional[SentimentTypeDB]] = mapped_column(
-        SQLEnum(SentimentTypeDB),
-        nullable=True
+    # Убираем enum, используем простые строки
+    rating: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Тональность отзыва (positive/negative/neutral)"
     )
     product: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,
         comment="Название продукта"
     )
-    gender: Mapped[Optional[GenderDB]] = mapped_column(
-        SQLEnum(GenderDB),
+    gender: Mapped[Optional[str]] = mapped_column(
+        String(20),
         nullable=True,
-        comment="Пол автора отзыва"
+        comment="Пол автора отзыва (male/female/unknown)"
     )
     city: Mapped[Optional[str]] = mapped_column(
         String(100),

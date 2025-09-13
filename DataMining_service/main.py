@@ -14,19 +14,36 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 
 kafka_broker = KafkaBrokerManager()
-scheduler = AsyncIOScheduler()
+scheduler = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global scheduler
     await kafka_broker.connect()
-    if False:
+    if scheduler is None:
+        scheduler = AsyncIOScheduler()
         from auto_parser.ParserService import get_and_publish_reviews
-        scheduler.add_job(get_and_publish_reviews, "interval", minutes=3)
-        scheduler.start()
+        scheduler.add_job(
+            get_and_publish_reviews,
+            "interval",
+            minutes=3,
+            id="review_parser",
+            replace_existing=True,
+            max_instances=1
+        )
+
+        try:
+            scheduler.start()
+            print(f"Планировщик запущен с {len(scheduler.get_jobs())} задачами")
+        except Exception as e:
+            print(f"Ошибка запуска планировщика: {e}")
+
     try:
         yield
     finally:
+        if scheduler and scheduler.running:
+            scheduler.shutdown(wait=True)
         await kafka_broker.close()
 
 
@@ -46,7 +63,6 @@ app.add_middleware(
 )
 
 
-# Зависимости
 def get_review_service(
     session: AsyncSession = Depends(get_async_session),
     broker: KafkaBrokerManager = Depends(lambda: kafka_broker)

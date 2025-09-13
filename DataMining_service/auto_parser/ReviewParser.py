@@ -10,26 +10,133 @@ from selenium.webdriver.support import expected_conditions as EC
 from GEO_service.get_region import get_region_dadata
 import re
 from datetime import datetime
+from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.webdriver.chrome.service import Service
+import psutil
+import signal
 
 
 class ReviewParser:
     def __init__(self):
         self.driver = None
+        self.max_retries = 3
+        self.base_timeout = 20
+        self.driver_service = None
+
+    def kill_chrome_processes(self):
+        """Принудительное завершение всех процессов Chrome"""
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                if proc.info['name'] and 'chrome' in proc.info['name'].lower():
+                    try:
+                        if proc.info['cmdline'] and any('--headless' in arg for arg in proc.info['cmdline']):
+                            proc.terminate()
+                            time.sleep(1)
+                            if proc.is_running():
+                                proc.kill()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+        except Exception as e:
+            print(f"Ошибка при завершении Chrome процессов: {e}")
 
     def setup_driver(self):
+        """Создание нового WebDriver с улучшенной стабильностью"""
         if self.driver:
             return
-        options = Options()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-images")
-        options.add_argument("--disable-extensions")
-        options.add_experimental_option("prefs", {"profile.managed_default_content_settings.images": 2})
-        self.driver = webdriver.Chrome(options=options)
-        self.driver.set_page_load_timeout(7)
 
+        # Очищаем старые процессы
+        self.kill_chrome_processes()
+        time.sleep(2)
 
+        try:
+            options = Options()
+            options.add_argument("--headless=new")  # Новый headless режим
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-images")
+            options.add_argument("--disable-extensions")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--disable-web-security")
+            options.add_argument("--disable-features=VizDisplayCompositor")
+            options.add_argument("--window-size=1920,1080")
+            options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+
+            # Отключаем логи Chrome
+            options.add_argument("--log-level=3")
+            options.add_argument("--disable-logging")
+            options.add_argument("--quiet")
+
+            # Критически важные настройки для стабильности
+            options.page_load_strategy = 'eager'
+            options.add_experimental_option("prefs", {
+                "profile.managed_default_content_settings.images": 2,
+                "profile.default_content_setting_values.notifications": 2
+            })
+
+            # Создаем сервис с дополнительными параметрами
+            self.driver_service = Service()
+
+            self.driver = webdriver.Chrome(service=self.driver_service, options=options)
+            self.driver.set_page_load_timeout(self.base_timeout)
+            self.driver.implicitly_wait(5)
+
+        except Exception as e:
+            print(f"Ошибка создания WebDriver: {e}")
+            self.cleanup_driver()
+            raise
+
+    def safe_get_page(self, url, retries=3):
+        """Безопасная загрузка страницы с обработкой всех ошибок"""
+        for attempt in range(retries):
+            try:
+                if not self.driver:
+                    self.setup_driver()
+
+                self.driver.get(url)
+                return True
+
+            except (TimeoutException, WebDriverException) as e:
+                print(f"Ошибка соединения на попытке {attempt + 1} для {url}: {e}")
+
+                # Пересоздаем драйвер при критических ошибках
+                self.cleanup_driver()
+
+                if attempt < retries - 1:
+                    time.sleep(3)
+                    continue
+                else:
+                    print(f"Окончательная ошибка для {url}")
+                    return False
+
+            except Exception as e:
+                print(f"Неожиданная ошибка на попытке {attempt + 1}: {e}")
+                self.cleanup_driver()
+                if attempt == retries - 1:
+                    return False
+                time.sleep(3)
+
+        return False
+
+    def cleanup_driver(self):
+        """Полная очистка WebDriver и связанных процессов"""
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+            finally:
+                self.driver = None
+
+        if self.driver_service:
+            try:
+                self.driver_service.stop()
+            except Exception:
+                pass
+            finally:
+                self.driver_service = None
+
+        # Принудительное завершение процессов
+        self.kill_chrome_processes()
 
     def normalize_date_to_datetime(self, date_text):
         if not date_text:
@@ -78,10 +185,13 @@ class ReviewParser:
     def extract_banki_review_data(self, url):
         """Извлекает текст и город с детальной страницы банки.ру"""
         try:
-            self.driver.get(url)
+            if not self.safe_get_page(url, retries=self.max_retries):
+                return "Ошибка загрузки страницы", None
+
             time.sleep(0.8)
             parser = HTMLParser(self.driver.page_source)
             text = None
+
             for sel in ['[class*="ResponseText"]', 'div[class*="Text"] p', '[class*="response-text"]']:
                 el = parser.css_first(sel)
                 if el and len(el.text()) > 50 and 'JavaScript' not in el.text():
@@ -97,13 +207,13 @@ class ReviewParser:
 
             if not text:
                 text = "Текст не найден"
+
             city = None
             city_element = parser.css_first('.l3a372298')
             if city_element:
                 city = city_element.text().strip()
 
             if not city:
-                # Fallback поиск в блоке автора
                 author_block = parser.css_first('[class*="lf4cbd87d"]')
                 if author_block:
                     spans = author_block.css('span')
@@ -120,7 +230,8 @@ class ReviewParser:
             return text, city
 
         except Exception as e:
-            return "Ошибка извлечения данных", None
+            print(f"Ошибка при извлечении данных с {url}: {repr(e)}")
+            return f"Ошибка извлечения данных: {repr(e)}", None
 
     def extract_sravni_city(self, card_element):
         """Извлекает город из карточки отзыва на sravni.ru"""
@@ -145,43 +256,55 @@ class ReviewParser:
             return None
 
     def get_banki_reviews(self, limit=5):
-        self.setup_driver()
-        self.driver.get("https://www.banki.ru/services/responses/bank/gazprombank/?type=all")
-
+        """Получение отзывов с banki.ru с улучшенной обработкой ошибок"""
         try:
-            WebDriverWait(self.driver, 4).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, '[data-test="responses__response"]')))
-        except:
-            pass
+            if not self.safe_get_page("https://www.banki.ru/services/responses/bank/gazprombank/?type=all",
+                                      retries=self.max_retries):
+                print("Не удалось загрузить главную страницу banki.ru")
+                return []
 
-        parser = HTMLParser(self.driver.page_source)
-        reviews = []
+            try:
+                WebDriverWait(self.driver, 4).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, '[data-test="responses__response"]')))
+            except TimeoutException:
+                print("Элементы отзывов не найдены на banki.ru")
 
-        for i, elem in enumerate(parser.css('[data-test="responses__response"]')[:limit]):
-            title = elem.css_first('h3 a')
-            if title:
-                href = title.attributes.get('href', '')
-                full_url = f"https://www.banki.ru{href}"
-                text, city = self.extract_banki_review_data(full_url)
-                region_code = get_region_dadata(city) if city else None
+            parser = HTMLParser(self.driver.page_source)
+            reviews = []
 
-                date_match = re.search(r'(\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2})', elem.text())
-                datetime_review = None
-                if date_match:
-                    datetime_review = self.normalize_date_to_datetime(date_match.group(1))
+            for i, elem in enumerate(parser.css('[data-test="responses__response"]')[:limit]):
+                try:
+                    title = elem.css_first('h3 a')
+                    if title:
+                        href = title.attributes.get('href', '')
+                        full_url = f"https://www.banki.ru{href}"
+                        text, city = self.extract_banki_review_data(full_url)
+                        region_code = get_region_dadata(city) if city else None
 
-                review = {
-                    'text': text,
-                    'datetime_review': datetime_review,
-                    'source_id': 'banki.ru',
-                    'city': city,
-                    'region_code': region_code,
-                    'url': full_url,
-                    'position': i + 1
-                }
-                reviews.append(review)
+                        date_match = re.search(r'(\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2})', elem.text())
+                        datetime_review = None
+                        if date_match:
+                            datetime_review = self.normalize_date_to_datetime(date_match.group(1))
 
-        return reviews
+                        review = {
+                            'text': text,
+                            'datetime_review': datetime_review,
+                            'source_id': 'banki.ru',
+                            'city': city,
+                            'region_code': region_code,
+                            'url': full_url,
+                            'position': i + 1
+                        }
+                        reviews.append(review)
+                except Exception as e:
+                    print(f"Ошибка обработки отзыва {i}: {e}")
+                    continue
+
+            return reviews
+
+        except Exception as e:
+            print(f"Критическая ошибка в get_banki_reviews: {e}")
+            return []
 
     def expand_text(self, card):
         try:
@@ -196,93 +319,117 @@ class ReviewParser:
         return False
 
     def get_sravni_reviews(self, limit=5):
-        self.setup_driver()
-        self.driver.get("https://www.sravni.ru/bank/gazprombank/otzyvy/?orderBy=byDate&filterBy=all")
-        time.sleep(1.5)
+        try:
+            if not self.safe_get_page("https://www.sravni.ru/bank/gazprombank/otzyvy/?orderBy=byDate&filterBy=all",
+                                      retries=self.max_retries):
+                print("Не удалось загрузить страницу sravni.ru")
+                return []
 
-        cards = self.driver.find_elements(By.CSS_SELECTOR, '[class*="review-card_wrapper"]')
-        reviews = []
-        processed = 0
+            time.sleep(1.5)
 
-        for card in cards:
-            if processed >= limit:
-                break
+            cards = self.driver.find_elements(By.CSS_SELECTOR, '[class*="review-card_wrapper"]')
+            reviews = []
+            processed = 0
 
-            try:
-                title_elem = card.find_element(By.CSS_SELECTOR, '[class*="review-card_title"]')
-                title = title_elem.text.strip()
+            for card in cards:
+                if processed >= limit:
+                    break
 
-                if len(title) <= 5:
+                try:
+                    title_elem = card.find_element(By.CSS_SELECTOR, '[class*="review-card_title"]')
+                    title = title_elem.text.strip()
+
+                    if len(title) <= 5:
+                        continue
+
+                    link_elem = card.find_element(By.CSS_SELECTOR, 'a[href*="/otzyvy/"]')
+                    url = link_elem.get_attribute('href')
+                    city = self.extract_sravni_city(card)
+                    region_code = get_region_dadata(city) if city else None
+
+                    self.expand_text(card)
+
+                    text = ""
+                    try:
+                        full_text = card.find_element(By.CSS_SELECTOR,
+                                                      '[class*="review-card_text"][class*="in-list"] span p')
+                        text = full_text.text.strip()
+                    except:
+                        try:
+                            text_elem = card.find_element(By.CSS_SELECTOR, '[class*="review-card_text"] p')
+                            text = text_elem.text.strip()
+                        except:
+                            text = title
+
+                    datetime_review = None
+                    time_elems = card.find_elements(By.CSS_SELECTOR, '[class*="h-color-D30"]')
+                    for time_elem in time_elems:
+                        time_text = time_elem.text.strip()
+                        if time_text and (':' in time_text or any(m in time_text.lower() for m in
+                                                                  ['января', 'февраля', 'марта', 'апреля', 'мая',
+                                                                   'июня',
+                                                                   'июля', 'августа', 'сентября', 'октября', 'ноября',
+                                                                   'декабря']) or any(
+                            p in time_text.lower() for p in ['только что', 'сейчас', 'недавно'])):
+                            datetime_review = self.normalize_date_to_datetime(time_text)
+                            break
+
+                    if not datetime_review:
+                        datetime_review = datetime.now().isoformat()
+
+                    review = {
+                        'text': text,
+                        'datetime_review': datetime_review,
+                        'source_id': 'sravni.ru',
+                        'city': city,
+                        'region_code': region_code,
+                        'url': url,
+                        'position': processed + 1
+                    }
+                    reviews.append(review)
+                    processed += 1
+
+                except Exception as e:
+                    print(f"Ошибка обработки карточки на sravni.ru: {repr(e)}")
                     continue
 
-                link_elem = card.find_element(By.CSS_SELECTOR, 'a[href*="/otzyvy/"]')
-                url = link_elem.get_attribute('href')
-                city = self.extract_sravni_city(card)
-                region_code = get_region_dadata(city) if city else None
+            return reviews
 
-                self.expand_text(card)
-
-                text = ""
-                try:
-                    full_text = card.find_element(By.CSS_SELECTOR,
-                                                  '[class*="review-card_text"][class*="in-list"] span p')
-                    text = full_text.text.strip()
-                except:
-                    try:
-                        text_elem = card.find_element(By.CSS_SELECTOR, '[class*="review-card_text"] p')
-                        text = text_elem.text.strip()
-                    except:
-                        text = title
-
-                datetime_review = None
-                time_elems = card.find_elements(By.CSS_SELECTOR, '[class*="h-color-D30"]')
-                for time_elem in time_elems:
-                    time_text = time_elem.text.strip()
-                    if time_text and (':' in time_text or any(m in time_text.lower() for m in
-                                                              ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-                                                               'июля', 'августа', 'сентября', 'октября', 'ноября',
-                                                               'декабря']) or any(
-                        p in time_text.lower() for p in ['только что', 'сейчас', 'недавно'])):
-                        datetime_review = self.normalize_date_to_datetime(time_text)
-                        break
-
-                if not datetime_review:
-                    datetime_review = datetime.now().isoformat()
-
-                review = {
-                    'text': text,
-                    'datetime_review': datetime_review,
-                    'source_id': 'sravni.ru',
-                    'city': city,
-                    'region_code': region_code,
-                    'url': url,
-                    'position': processed + 1
-                }
-                reviews.append(review)
-                processed += 1
-
-            except:
-                continue
-
-        return reviews
+        except Exception as e:
+            print(f"Критическая ошибка в get_sravni_reviews: {e}")
+            return []
 
     def get_reviews(self, banki_limit=5, sravni_limit=5):
-        banki = self.get_banki_reviews(banki_limit)
-        sravni = self.get_sravni_reviews(sravni_limit)
+        """Главный метод получения отзывов с полной очисткой ресурсов"""
+        try:
+            banki = self.get_banki_reviews(banki_limit)
+            sravni = self.get_sravni_reviews(sravni_limit)
 
-        if self.driver:
-            self.driver.quit()
-
-        return {
-            'banki.ru': banki,
-            'sravni.ru': sravni,
-            'total': len(banki) + len(sravni),
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
+            return {
+                'banki.ru': banki,
+                'sravni.ru': sravni,
+                'total': len(banki) + len(sravni),
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+        except Exception as e:
+            print(f"Ошибка при получении отзывов: {e}")
+            return {
+                'banki.ru': [],
+                'sravni.ru': [],
+                'total': 0,
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+        finally:
+            # ВСЕГДА очищаем ресурсы
+            self.cleanup_driver()
 
     def close(self):
-        if self.driver:
-            self.driver.quit()
+        """Закрытие парсера"""
+        self.cleanup_driver()
+
+    def __del__(self):
+        """Деструктор для принудительной очистки"""
+        self.cleanup_driver()
 
 
 class ReviewMonitor:
@@ -350,6 +497,7 @@ class ReviewMonitor:
 
         if state['banki_first_url'] is None and state['sravni_first_url'] is None:
             return self.initialize_state()
+
         current = self.parser.get_reviews()
 
         new_reviews = []
@@ -369,6 +517,7 @@ class ReviewMonitor:
                     })
                     has_new = True
 
+        # Проверка sravni.ru
         if current['sravni.ru']:
             current_first_sravni = current['sravni.ru'][0]['url']
             if current_first_sravni != state['sravni_first_url']:
@@ -384,9 +533,11 @@ class ReviewMonitor:
 
         if not has_new:
             return None
+
         new_banki_first = current['banki.ru'][0]['url'] if current['banki.ru'] else state['banki_first_url']
         new_sravni_first = current['sravni.ru'][0]['url'] if current['sravni.ru'] else state['sravni_first_url']
         self.save_state(new_banki_first, new_sravni_first)
+
         result = {
             'reviews': new_reviews,
             'total_new': len(new_reviews),
@@ -395,11 +546,18 @@ class ReviewMonitor:
         }
         return result
 
+    def close(self):
+        if self.parser:
+            self.parser.close()
+
 
 if __name__ == "__main__":
     monitor = ReviewMonitor()
-    result = monitor.get_new_reviews()
-    if result:
-        print(result)
-    else:
-        print("Новых отзывов не найдено!")
+    try:
+        result = monitor.get_new_reviews()
+        if result:
+            print(result)
+        else:
+            print("Новых отзывов не найдено!")
+    finally:
+        monitor.close()

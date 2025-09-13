@@ -42,7 +42,7 @@ async def get_current_user(
     return user
 
 
-@app.post("api/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/api/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(
         user_data: UserRegister,
         user_repository: UserRepository = Depends(get_user_repository)
@@ -65,7 +65,7 @@ async def register_user(
     return UserResponse.from_orm(new_user)
 
 
-@app.post("api/auth/login", response_model=Token)
+@app.post("/api/auth/login", response_model=Token)
 async def login_user(
         form_data: OAuth2PasswordRequestForm = Depends(),
         user_repository: UserRepository = Depends(get_user_repository)
@@ -83,13 +83,13 @@ async def login_user(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@app.get("api/auth/me", response_model=UserResponse)
+@app.get("/api/auth/me", response_model=UserResponse)
 async def get_current_user_info(current_user=Depends(get_current_user)):
     """Получение информации о текущем пользователе"""
     return UserResponse.from_orm(current_user)
 
 
-@app.get("api/users/{user_uuid}", response_model=UserResponse)
+@app.get("/api/users/{user_uuid}", response_model=UserResponse)
 async def get_user_by_uuid(
         user_uuid: UUID,
         user_repository: UserRepository = Depends(get_user_repository),

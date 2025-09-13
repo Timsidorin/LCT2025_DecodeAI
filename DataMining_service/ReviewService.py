@@ -4,7 +4,7 @@ from datetime import datetime
 
 from core.broker import KafkaBrokerManager
 from repository import ReviewRepository
-from shemas.review import ReviewCreate, ReviewResponse, SentimentType
+from shemas.review import ReviewCreate, ReviewResponse
 
 
 class ReviewService:
@@ -107,19 +107,19 @@ class ReviewService:
         )
         return [self._build_response(review) for review in db_reviews]
 
-    async def update_review_analysis(self,
-                                   review_id: str,
-                                   rating: Optional[SentimentType] = None,
-                                   gender: Optional[str] = None) -> Optional[ReviewResponse]:
-        """Обновить результаты анализа отзыва."""
-        db_review = await self.repo.update_review_analysis(
-            review_id=review_id,
-            rating=rating.value if rating else None,
-            gender=gender
-        )
-        if db_review:
-            return self._build_response(db_review)
-        return None
+    # async def update_review_analysis(self,
+    #                                review_id: str,
+    #                                rating: Optional[SentimentType] = None,
+    #                                gender: Optional[str] = None) -> Optional[ReviewResponse]:
+    #     """Обновить результаты анализа отзыва."""
+    #     db_review = await self.repo.update_review_analysis(
+    #         review_id=review_id,
+    #         rating=rating.value if rating else None,
+    #         gender=gender
+    #     )
+    #     if db_review:
+    #         return self._build_response(db_review)
+    #     return None
 
     async def get_reviews_by_region(self, region_code: str, limit: int = 10) -> list[ReviewResponse]:
         """Получить отзывы по коду региона."""
