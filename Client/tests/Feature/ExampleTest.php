@@ -1,7 +1,7 @@
 <?php
 
-test('returns a successful response', function () {
-    $response = $this->get(route('home'));
+test('the application returns a successful response', function () {
+    $response = $this->get('/');
 
     $response->assertStatus(200);
 });
