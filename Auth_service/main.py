@@ -9,7 +9,8 @@ from security import create_access_token, decode_access_token
 from typing import Optional
 from uuid import UUID
 
-app = FastAPI()
+app = FastAPI(title=configs.PROJECT_NAME)
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 
@@ -108,5 +109,4 @@ async def get_user_by_uuid(
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("main:app", host=configs.HOST, port=configs.PORT, reload=True)

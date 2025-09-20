@@ -9,6 +9,8 @@ class Configs(BaseSettings):
     HOST: str = "localhost"
     PORT: int = 8005
 
+    PROJECT_NAME:str = "Модуль авторизации"
+
     # ------------ Аутентификация ------------
     SECRET_KEY: str = Field(
         default="your-secret-key", env="SECRET_KEY"
