@@ -1,5 +1,5 @@
 import requests
-from core.config import configs
+from ..core.config import configs
 
 def get_region_dadata(city_name):
     url = "https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address"
