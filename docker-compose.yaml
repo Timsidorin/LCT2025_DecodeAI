@@ -1,3 +1,4 @@
+
 services:
   postgres:
     image: postgres:16
@@ -18,7 +19,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
-
 
   kafka:
     image: confluentinc/cp-kafka:latest
@@ -42,8 +42,52 @@ services:
     image: rabbitmq:3-management
     container_name: rabbitmq
     ports:
-      - "5672:5672" #
-      - "15672:15672" # UI
+      - "5672:5672"
+      - "15672:15672"
+    restart: unless-stopped
+
+  # Auth Service
+  auth-service:
+    build:
+      context: .
+      dockerfile: ./auth_service/Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Data Mining Service
+  data-mining-service:
+    build:
+      context: .
+      dockerfile: ./data_mining_service/Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - kafka
+      - auth-service
+    restart: unless-stopped
+    volumes:
+      - ./logs:/data_mining_service/logs
+
+  # ML Processing Service
+  ml-service:
+    build:
+      context: .
+      dockerfile: ./ml_service/Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - kafka
+      - auth-service
+    restart: unless-stopped
+    volumes:
+      - ./ml_models:/ml_service/models
+      - ./logs:/ml_service/logs
 
 volumes:
   postgres_data:
