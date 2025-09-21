@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'auth' => [
+        'base_url' => env('AUTH_BASE_URL'),
+    ]
+
 ];

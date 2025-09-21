@@ -2,22 +2,44 @@
 
 namespace App\Models\Providers;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
-class BaseApiProvider {
-    private function get($url) {
-        return Http::get($url);
+class BaseApiProvider
+{
+    private $baseUrl;
+
+    public function __construct($baseUrl)
+    {
+        $this->baseUrl = $baseUrl;
     }
 
-    private function post($url, $data) {
-        return Http::post($url, $data);
+    protected function get(string $url, array $headers = [])
+    {
+        return Http::withHeaders($headers)->get($this->baseUrl . $url);
     }
 
-    private function put($url, $data) {
-        return Http::put($url, $data);
+    /**
+     * @throws ConnectionException
+     */
+    protected function post(string $url, array $data, bool $isFormData = false, array $headers = [])
+    {
+        $http = Http::withHeaders($headers);
+
+        if ($isFormData) {
+            return $http->asForm()->post($this->baseUrl . $url, $data);
+        } else {
+            return $http->post($this->baseUrl . $url, $data);
+        }
     }
 
-    private function delete($url, $data) {
-        return Http::delete($url, $data);
+    protected function put(string $url, array $data, array $headers = [])
+    {
+        return Http::withHeaders($headers)->put($this->baseUrl . $url, $data);
+    }
+
+    protected function delete(string $url, array $data, array $headers = [])
+    {
+        return Http::withHeaders($headers)->delete($this->baseUrl . $url, $data);
     }
 }
