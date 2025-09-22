@@ -77,32 +77,124 @@ class ReviewAnalyticsRepository:
 
         return gender_data
 
-    async def get_source_distribution(self, filters: Optional[ReviewFilters] = None) -> Dict[str, int]:
-        """Распределение по источникам"""
-        query = select(
-            Review.source,
-            func.count(Review.uuid).label('count')
-        ).group_by(Review.source).order_by(desc('count'))
-
-        if filters:
-            query = self._apply_filters(query, filters)
-
-        result = await self.session.execute(query)
-        return {row.source: row.count for row in result}
 
     # ========== РЕГИОНАЛЬНАЯ АНАЛИТИКА ==========
+
+    async def get_unique_regions(self) -> List[Dict[str, Any]]:
+        """Получение всех уникальных регионов с их кодами"""
+        query = select(
+            Review.region,
+            Review.region_code,
+            func.count(Review.uuid).label('reviews_count')
+        ).where(
+            and_(
+                Review.region.isnot(None),
+                Review.region_code.isnot(None)
+            )
+        ).group_by(
+            Review.region,
+            Review.region_code
+        ).order_by(
+            desc('reviews_count'),
+            Review.region
+        )
+
+        result = await self.session.execute(query)
+
+        regions = []
+        for row in result:
+            regions.append({
+                'region_name': row.region,
+                'region_code': row.region_code,
+                'reviews_count': row.reviews_count
+            })
+
+        return regions
+
+    async def get_unique_region_codes(self) -> List[Dict[str, Any]]:
+        """Получение только уникальных кодов регионов"""
+        query = select(
+            Review.region_code,
+            func.count(Review.uuid).label('reviews_count')
+        ).where(
+            Review.region_code.isnot(None)
+        ).group_by(
+            Review.region_code
+        ).order_by(
+            desc('reviews_count'),
+            Review.region_code
+        )
+
+        result = await self.session.execute(query)
+
+        return [
+            {
+                'region_code': row.region_code,
+                'reviews_count': row.reviews_count
+            }
+            for row in result
+        ]
+
+    async def get_regions_hierarchy(self) -> Dict[str, Any]:
+        """Получение иерархии регионов с городами"""
+        query = select(
+            Review.region,
+            Review.region_code,
+            Review.city,
+            func.count(Review.uuid).label('reviews_count')
+        ).where(
+            and_(
+                Review.region.isnot(None),
+                Review.region_code.isnot(None)
+            )
+        ).group_by(
+            Review.region,
+            Review.region_code,
+            Review.city
+        ).order_by(
+            Review.region,
+            desc('reviews_count')
+        )
+
+        result = await self.session.execute(query)
+        regions_hierarchy = {}
+
+        for row in result:
+            region_key = f"{row.region} ({row.region_code})"
+
+            if region_key not in regions_hierarchy:
+                regions_hierarchy[region_key] = {
+                    'region_name': row.region,
+                    'region_code': row.region_code,
+                    'total_reviews': 0,
+                    'cities': []
+                }
+
+            regions_hierarchy[region_key]['total_reviews'] += row.reviews_count
+
+            if row.city:
+                regions_hierarchy[region_key]['cities'].append({
+                    'city_name': row.city,
+                    'reviews_count': row.reviews_count
+                })
+
+        return {
+            'regions': list(regions_hierarchy.values()),
+            'total_regions': len(regions_hierarchy)
+        }
 
     async def get_regional_stats(self, filters: Optional[ReviewFilters] = None, limit: int = 10) -> List[
         Dict[str, Any]]:
         """Топ регионов по количеству отзывов"""
         query = select(
             Review.region_code,
+            Review.region,
             func.count(Review.uuid).label('total_count'),
             func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_count'),
             func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_count'),
             func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral_count')
         ).where(Review.region_code.isnot(None)) \
-            .group_by(Review.region_code) \
+            .group_by(Review.region_code, Review.region) \
             .order_by(desc('total_count')) \
             .limit(limit)
 
@@ -117,6 +209,7 @@ class ReviewAnalyticsRepository:
             negative_rate = (row.negative_count / row.total_count * 100) if row.total_count > 0 else 0
 
             regional_stats.append({
+                'region_name': row.region,
                 'region_code': row.region_code,
                 'total_count': row.total_count,
                 'positive_count': row.positive_count,
@@ -134,12 +227,13 @@ class ReviewAnalyticsRepository:
         """Топ городов по количеству отзывов"""
         query = select(
             Review.city,
+            Review.region,
             Review.region_code,
             func.count(Review.uuid).label('count'),
             func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_count'),
             func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_count')
         ).where(Review.city.isnot(None)) \
-            .group_by(Review.city, Review.region_code) \
+            .group_by(Review.city, Review.region, Review.region_code) \
             .order_by(desc('count')) \
             .limit(limit)
 
@@ -150,6 +244,7 @@ class ReviewAnalyticsRepository:
         return [
             {
                 'city': row.city,
+                'region_name': row.region,
                 'region_code': row.region_code,
                 'count': row.count,
                 'positive_count': row.positive_count,
@@ -261,93 +356,6 @@ class ReviewAnalyticsRepository:
 
         return products_analysis
 
-    # ========== РЕАЛЬНОЕ ВРЕМЯ ==========
-
-    async def get_recent_activity(self, minutes_back: int = 60, limit: int = 50) -> List[Dict[str, Any]]:
-        """Недавняя активность за последние N минут"""
-        cutoff_time = datetime.now() - timedelta(minutes=minutes_back)
-
-        query = select(Review) \
-            .where(Review.created_at >= cutoff_time) \
-            .order_by(desc(Review.created_at)) \
-            .limit(limit)
-
-        result = await self.session.execute(query)
-        reviews = result.scalars().all()
-
-        return [
-            {
-                'uuid': str(review.uuid),
-                'text': review.text[:100] + '...' if len(review.text) > 100 else review.text,
-                'rating': review.rating,
-                'source': review.source,
-                'city': review.city,
-                'region_code': review.region_code,
-                'gender': review.gender,
-                'created_at': review.created_at.isoformat(),
-                'datetime_review': review.datetime_review.isoformat(),
-                'minutes_ago': int((datetime.now() - review.created_at).total_seconds() / 60)
-            }
-            for review in reviews
-        ]
-
-    async def get_growth_metrics(self, period_hours: int = 24) -> Dict[str, Any]:
-        """Метрики роста за период"""
-        current_time = datetime.now()
-        period_start = current_time - timedelta(hours=period_hours)
-        previous_period_start = period_start - timedelta(hours=period_hours)
-
-        # Текущий период
-        current_query = select(
-            func.count(Review.uuid).label('total'),
-            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive'),
-            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative')
-        ).where(Review.created_at >= period_start)
-
-        # Предыдущий период
-        previous_query = select(
-            func.count(Review.uuid).label('total'),
-            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive'),
-            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative')
-        ).where(
-            and_(
-                Review.created_at >= previous_period_start,
-                Review.created_at < period_start
-            )
-        )
-
-        current_result = await self.session.execute(current_query)
-        previous_result = await self.session.execute(previous_query)
-
-        current = current_result.first()
-        previous = previous_result.first()
-
-        def calculate_growth(current_val, previous_val):
-            if previous_val == 0:
-                return 100.0 if current_val > 0 else 0.0
-            return ((current_val - previous_val) / previous_val) * 100
-
-        return {
-            'current_period': {
-                'total': current.total,
-                'positive': current.positive,
-                'negative': current.negative,
-                'neutral': current.total - current.positive - current.negative
-            },
-            'previous_period': {
-                'total': previous.total,
-                'positive': previous.positive,
-                'negative': previous.negative,
-                'neutral': previous.total - previous.positive - previous.negative
-            },
-            'growth': {
-                'total_growth': round(calculate_growth(current.total, previous.total), 2),
-                'positive_growth': round(calculate_growth(current.positive, previous.positive), 2),
-                'negative_growth': round(calculate_growth(current.negative, previous.negative), 2)
-            },
-            'period_hours': period_hours
-        }
-
     # ========== ДОПОЛНИТЕЛЬНАЯ АНАЛИТИКА ==========
 
     async def get_text_length_stats(self, filters: Optional[ReviewFilters] = None) -> Dict[str, Any]:
@@ -419,14 +427,74 @@ class ReviewAnalyticsRepository:
                                  2)
         }
 
-    # ========== УТИЛИТЫ ==========
+    async def get_region_basic_info(self, region_code: str) -> Optional[Dict[str, Any]]:
+        """Получить базовую информацию о регионе"""
+        query = select(
+            Review.region,
+            Review.region_code,
+            func.count(Review.uuid).label('total_reviews'),
+            func.count(func.distinct(Review.city)).label('unique_cities')
+        ).where(Review.region_code == region_code).group_by(
+            Review.region, Review.region_code
+        )
+
+        result = await self.session.execute(query)
+        region_info = result.first()
+
+        if region_info:
+            return {
+                'region_name': region_info.region,
+                'region_code': region_info.region_code,
+                'total_reviews': region_info.total_reviews,
+                'unique_cities': region_info.unique_cities
+            }
+        return None
+
+    async def get_cities_by_region_query(
+            self,
+            region_code: Optional[str] = None,
+            min_reviews: int = 1,
+            limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """Получить города с фильтрацией по региону"""
+        query = select(
+            Review.city,
+            Review.region,
+            Review.region_code,
+            func.count(Review.uuid).label('reviews_count')
+        ).where(
+            Review.city.isnot(None)
+        ).group_by(
+            Review.city,
+            Review.region,
+            Review.region_code
+        ).having(
+            func.count(Review.uuid) >= min_reviews
+        ).order_by(
+            desc('reviews_count'),
+            Review.city
+        ).limit(limit)
+
+        if region_code:
+            query = query.where(Review.region_code == region_code)
+
+        result = await self.session.execute(query)
+
+        return [
+            {
+                'city_name': row.city,
+                'region_name': row.region,
+                'region_code': row.region_code,
+                'reviews_count': row.reviews_count
+            }
+            for row in result
+        ]
 
     def _apply_filters(self, query, filters: ReviewFilters):
         """Применение фильтров к запросу с учетом вашей модели"""
         if filters.rating:
             query = query.where(Review.rating == filters.rating.value)
         if filters.gender:
-            # Маппинг enum значений на строки БД
             gender_map = {'М': 'male', 'Ж': 'female', '': 'unknown'}
             db_gender = gender_map.get(filters.gender.value, filters.gender.value)
             if db_gender == 'unknown':
@@ -441,7 +509,6 @@ class ReviewAnalyticsRepository:
         if filters.product:
             query = query.where(Review.product.ilike(f"%{filters.product}%"))
 
-        # Фильтры по датам
         if filters.date_from:
             query = query.where(Review.datetime_review >= filters.date_from)
         if filters.date_to:
@@ -451,7 +518,6 @@ class ReviewAnalyticsRepository:
         if filters.created_to:
             query = query.where(Review.created_at <= filters.created_to)
 
-        # Фильтры по спискам
         if filters.sources:
             query = query.where(Review.source.in_(filters.sources))
         if filters.ratings:

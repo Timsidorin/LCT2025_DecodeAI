@@ -16,6 +16,7 @@ class ReviewBase(BaseModel):
     product: Optional[str] = Field(None, max_length=255, description="Название продукта")
     gender: Optional[str] = Field(None, description="Пол автора")
     city: Optional[str] = Field(None, max_length=100, description="Город")
+    region: Optional[str] = Field(None, max_length=100, description="Регион")
     region_code: Optional[str] = Field(None, max_length=20, description="Код региона")
     datetime_review: datetime = Field(..., description="Дата отзыва")
 
@@ -130,7 +131,6 @@ class QueryParams(BaseModel):
 # ========== ОТВЕТЫ ==========
 
 class PaginationMeta(BaseModel):
-    """Метаданные пагинации"""
     page: int = Field(..., description="Текущая страница")
     size: int = Field(..., description="Размер страницы")
     total: int = Field(..., description="Общее количество записей")
@@ -140,7 +140,6 @@ class PaginationMeta(BaseModel):
 
 
 class ReviewListResponse(BaseModel):
-    """Ответ со списком отзывов и пагинацией"""
     items: List[ReviewResponse] = Field(..., description="Список отзывов")
     meta: PaginationMeta = Field(..., description="Метаданные пагинации")
 

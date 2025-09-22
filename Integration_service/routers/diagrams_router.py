@@ -6,29 +6,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from Integration_service.core.database import get_async_session
 from Integration_service.repository import ReviewAnalyticsRepository
-from Integration_service.schemas.processed_review import ReviewFilters, RatingFilter, GenderFilter
-from Integration_service.schemas.processed_review import DashboardSummary, RegionalDashboard, RealTimeMetrics
 from Integration_service.services.DashBoardService import DashboardService
+from Integration_service.schemas.processed_review import ReviewFilters, RatingFilter, GenderFilter
 
-router = APIRouter(prefix="/api/dashboard", tags=["Дашборд Аналитика"])
+router = APIRouter(prefix="/api/dashboard", tags=["Дашборд аналитика"])
 
 
-# ========== DEPENDENCY INJECTION ==========
 
-async def get_analytics_repo() -> ReviewAnalyticsRepository:
-    """Dependency для получения репозитория аналитики"""
-    async with get_async_session() as session:
-        yield ReviewAnalyticsRepository(session)
+async def get_analytics_repo(
+    session: AsyncSession = Depends(get_async_session)
+) -> ReviewAnalyticsRepository:
+    return ReviewAnalyticsRepository(session)
 
 
 async def get_dashboard_service(
         analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
 ) -> DashboardService:
-    """Dependency для получения сервиса дашборда"""
     return DashboardService(analytics_repo)
 
 
-# ========== ОСНОВНЫЕ ЭНДПОИНТЫ ДАШБОРДА ==========
+# ========== ОСНОВНЫЕ ДАШБОРД ЭНДПОИНТЫ ==========
 
 @router.get("/summary", response_model=Dict[str, Any], summary="Основная сводка дашборда")
 async def get_dashboard_summary(
@@ -42,16 +39,6 @@ async def get_dashboard_summary(
         date_to: Optional[datetime] = Query(None, description="Дата по"),
         dashboard_service: DashboardService = Depends(get_dashboard_service)
 ):
-    """
-   Получить основную сводку дашборда с возможностью фильтрации
-
-   Возвращает:
-   - Общее количество отзывов
-   - Распределение по тональности
-   - Распределение по полу
-   - Недавнюю активность
-   - Метрики роста
-   """
     try:
         filters = ReviewFilters(
             rating=rating,
@@ -77,14 +64,6 @@ async def get_regional_dashboard(
         limit: int = Query(20, ge=1, le=100, description="Количество регионов в топе"),
         dashboard_service: DashboardService = Depends(get_dashboard_service)
 ):
-    """
-   Региональная аналитика отзывов
-
-   Возвращает:
-   - Топ регионов по количеству отзывов
-   - Статистику по городам
-   - Распределение тональности по регионам
-   """
     try:
         regional_data = await dashboard_service.get_regional_dashboard(region_code, limit)
         return regional_data
@@ -93,26 +72,57 @@ async def get_regional_dashboard(
         raise HTTPException(status_code=500, detail=f"Ошибка региональной аналитики: {str(e)}")
 
 
-@router.get("/realtime", response_model=Dict[str, Any], summary="Данные реального времени")
-async def get_realtime_metrics(
-        minutes_back: int = Query(5, ge=1, le=60, description="Период в минутах"),
-        limit: int = Query(20, ge=1, le=100, description="Количество недавних отзывов"),
+
+# ========== РЕГИОНЫ И ГОРОДА ==========
+
+@router.get("/regions", summary="Все встречающиеся регионы в отзывах")
+async def get_regions(
+        include_cities: bool = Query(False, description="Включить города для каждого региона"),
+        min_reviews: int = Query(0, ge=0, description="Минимальное количество отзывов"),
         dashboard_service: DashboardService = Depends(get_dashboard_service)
 ):
-    """
-   Метрики реального времени
-
-   Возвращает недавние отзывы за указанный период
-   """
     try:
-        realtime_data = await dashboard_service.get_realtime_metrics(minutes_back, limit)
-        return realtime_data
-
+        return await dashboard_service.get_all_regions(include_cities, min_reviews)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка получения данных реального времени: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка получения регионов: {str(e)}")
 
 
-# ========== СТАТИСТИЧЕСКИЕ ЭНДПОИНТЫ ==========
+@router.get("/regions/codes", summary="Коды регионов")
+async def get_region_codes(
+        dashboard_service: DashboardService = Depends(get_dashboard_service)
+):
+    try:
+        return await dashboard_service.get_region_codes_only()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения кодов регионов: {str(e)}")
+
+
+@router.get("/regions/{region_code}", summary="Детали конкретного региона")
+async def get_region_details(
+        region_code: str,
+        dashboard_service: DashboardService = Depends(get_dashboard_service)
+):
+    try:
+        return await dashboard_service.get_region_details(region_code)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения деталей региона: {str(e)}")
+
+
+@router.get("/cities", summary="Все уникальные города")
+async def get_cities(
+        region_code: Optional[str] = Query(None, description="Фильтр по коду региона"),
+        min_reviews: int = Query(1, ge=0, description="Минимальное количество отзывов"),
+        limit: int = Query(100, ge=1, le=500, description="Лимит результатов"),
+        dashboard_service: DashboardService = Depends(get_dashboard_service)
+):
+    try:
+        return await dashboard_service.get_cities_by_region(region_code, min_reviews, limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения городов: {str(e)}")
+
+
 
 @router.get("/stats/sentiment", summary="Статистика по тональности")
 async def get_sentiment_stats(
@@ -123,7 +133,6 @@ async def get_sentiment_stats(
         date_to: Optional[datetime] = Query(None, description="Дата по"),
         analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
 ):
-    """Детальная статистика по тональности с фильтрами"""
     try:
         filters = ReviewFilters(
             region_code=region_code,
@@ -135,7 +144,6 @@ async def get_sentiment_stats(
 
         sentiment_data = await analytics_repo.get_sentiment_distribution(filters)
         total = sum(sentiment_data.values())
-
         sentiment_with_percentages = {}
         for sentiment, count in sentiment_data.items():
             percentage = (count / total * 100) if total > 0 else 0
@@ -181,7 +189,6 @@ async def get_cities_stats(
         limit: int = Query(15, ge=1, le=50, description="Количество городов"),
         analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
 ):
-    """Топ городов с возможностью фильтрации по региону"""
     try:
         city_stats = await analytics_repo.get_city_stats(region_code, limit)
 
@@ -218,154 +225,3 @@ async def get_products_sentiment_analysis(
         raise HTTPException(status_code=500, detail=f"Ошибка анализа продуктов: {str(e)}")
 
 
-# ========== ВРЕМЕННЫЕ ТРЕНДЫ ==========
-
-@router.get("/trends/daily", summary="Дневные тренды")
-async def get_daily_trends(
-        days_back: int = Query(30, ge=1, le=365, description="Количество дней назад"),
-        region_code: Optional[str] = Query(None, description="Код региона"),
-        rating: Optional[RatingFilter] = Query(None, description="Фильтр по тональности"),
-        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
-):
-    """Тренды отзывов по дням"""
-    try:
-        filters = ReviewFilters(region_code=region_code, rating=rating)
-        daily_trends = await analytics_repo.get_daily_trends(days_back, filters)
-
-        return {
-            'daily_trends': daily_trends,
-            'period_days': days_back,
-            'filters_applied': filters.model_dump(exclude_none=True),
-            'timestamp': datetime.now().isoformat()
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка получения дневных трендов: {str(e)}")
-
-
-@router.get("/trends/hourly", summary="Почасовое распределение")
-async def get_hourly_distribution(
-        region_code: Optional[str] = Query(None, description="Код региона"),
-        date_from: Optional[datetime] = Query(None, description="Дата с"),
-        date_to: Optional[datetime] = Query(None, description="Дата по"),
-        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
-):
-    """Распределение отзывов по часам дня"""
-    try:
-        filters = ReviewFilters(
-            region_code=region_code,
-            date_from=date_from,
-            date_to=date_to
-        )
-
-        hourly_data = await analytics_repo.get_hourly_distribution(filters)
-
-        return {
-            'hourly_distribution': hourly_data,
-            'filters_applied': filters.model_dump(exclude_none=True),
-            'timestamp': datetime.now().isoformat()
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка получения почасового распределения: {str(e)}")
-
-
-# ========== МЕТРИКИ РОСТА ==========
-
-@router.get("/growth/metrics", summary="Метрики роста")
-async def get_growth_metrics(
-        period_hours: int = Query(24, ge=1, le=168, description="Период в часах (max 7 дней)"),
-        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
-):
-    """Метрики роста за указанный период"""
-    try:
-        growth_data = await analytics_repo.get_growth_metrics(period_hours)
-
-        return {
-            'growth_metrics': growth_data,
-            'timestamp': datetime.now().isoformat()
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка получения метрик роста: {str(e)}")
-
-
-@router.get("/growth/weekly", summary="Недельное сравнение")
-async def get_weekly_comparison(
-        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
-):
-    """Сравнение текущей и предыдущей недели"""
-    try:
-        weekly_data = await analytics_repo.get_weekly_comparison()
-
-        return {
-            'weekly_comparison': weekly_data,
-            'timestamp': datetime.now().isoformat()
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка получения недельного сравнения: {str(e)}")
-
-
-# ========== ДОПОЛНИТЕЛЬНАЯ АНАЛИТИКА ==========
-
-@router.get("/stats/text-analysis", summary="Анализ текста")
-async def get_text_analysis(
-        region_code: Optional[str] = Query(None, description="Код региона"),
-        rating: Optional[RatingFilter] = Query(None, description="Тональность"),
-        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
-):
-    """Статистика по длине и характеристикам текста отзывов"""
-    try:
-        filters = ReviewFilters(region_code=region_code, rating=rating)
-        text_stats = await analytics_repo.get_text_length_stats(filters)
-
-        return {
-            'text_statistics': text_stats,
-            'filters_applied': filters.model_dump(exclude_none=True),
-            'timestamp': datetime.now().isoformat()
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка анализа текста: {str(e)}")
-
-
-@router.get("/recent/activity", summary="Недавняя активность")
-async def get_recent_activity(
-        minutes_back: int = Query(60, ge=1, le=1440, description="Период в минутах (max 24 часа)"),
-        limit: int = Query(50, ge=1, le=200, description="Количество отзывов"),
-        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
-):
-    """Недавние отзывы с детальной информацией"""
-    try:
-        recent_reviews = await analytics_repo.get_recent_activity(minutes_back, limit)
-
-        return {
-            'recent_activity': recent_reviews,
-            'period_minutes': minutes_back,
-            'total_returned': len(recent_reviews),
-            'timestamp': datetime.now().isoformat()
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка получения недавней активности: {str(e)}")
-
-
-
-@router.get("/regions", summary="Все встречающиеся регионы в отзывах")
-async def get_recent_activity(
-        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
-):
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка получения недавней активности: {str(e)}")
-
-
-
-@router.get("/region/citys", summary="Все города в регионе")
-async def get_recent_activity(
-        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
-):
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка получения недавней активности: {str(e)}")
