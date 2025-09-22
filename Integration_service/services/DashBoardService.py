@@ -214,6 +214,61 @@ class DashboardService:
             'timestamp': datetime.now().isoformat()
         }
 
+    async def get_regions_sentiment_map(
+            self,
+            min_reviews: int = 0,
+            include_cities: bool = False
+    ) -> Dict[str, Any]:
+        """Получить регионы с sentiment анализом и цветами для карты"""
+
+        regions_data = await self.analytics_repo.get_regions_with_sentiment_colors(min_reviews)
+
+        # Дополнительная аналитика
+        if regions_data:
+            total_regions = len(regions_data)
+            positive_regions = len([r for r in regions_data if r['sentiment_score'] > 0.1])
+            negative_regions = len([r for r in regions_data if r['sentiment_score'] < -0.1])
+
+            # Топ и худшие регионы
+            best_region = max(regions_data, key=lambda x: x['sentiment_score'])
+            worst_region = min(regions_data, key=lambda x: x['sentiment_score'])
+
+            analytics = {
+                'total_regions': total_regions,
+                'positive_regions_count': positive_regions,
+                'negative_regions_count': negative_regions,
+                'neutral_regions_count': total_regions - positive_regions - negative_regions,
+                'best_sentiment_region': {
+                    'name': best_region['region_name'],
+                    'code': best_region['region_code'],
+                    'score': best_region['sentiment_score']
+                },
+                'worst_sentiment_region': {
+                    'name': worst_region['region_name'],
+                    'code': worst_region['region_code'],
+                    'score': worst_region['sentiment_score']
+                }
+            }
+        else:
+            analytics = {}
+
+        response = {
+            'regions': regions_data,
+            'total_regions': len(regions_data),
+            'include_cities': include_cities,
+            'min_reviews_filter': min_reviews,
+            'color_scheme': {
+                'positive': '#228B22',
+                'neutral': '#E2B007',
+                'negative': '#FA8072'
+            },
+            'analytics': analytics,
+            'timestamp': datetime.now().isoformat()
+        }
+
+        return response
+
+
     # ========== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ==========
 
     async def _get_quick_insights(self, filters: Optional[ReviewFilters] = None) -> Dict[str, Any]:
@@ -322,7 +377,6 @@ class DashboardService:
         if not recent_reviews:
             return {'status': 'no_activity', 'analysis': {}}
 
-        # Анализируем тональность недавних отзывов
         sentiment_counts = {'positive': 0, 'negative': 0, 'neutral': 0, 'unknown': 0}
         regions_activity = {}
 
@@ -344,26 +398,6 @@ class DashboardService:
             'activity_score': len(recent_reviews) / 20 * 100
         }
 
-    async def _generate_realtime_alerts(self, activity_analysis: Dict) -> List[Dict[str, Any]]:
-        """Генерация алертов в реальном времени"""
-        alerts = []
-
-        if activity_analysis.get('sentiment_trend') == 'negative':
-            alerts.append({
-                'type': 'sentiment_alert',
-                'severity': 'medium',
-                'message': 'Обнаружен тренд негативных отзывов в реальном времени'
-            })
-
-        activity_score = activity_analysis.get('activity_score', 0)
-        if activity_score > 150:
-            alerts.append({
-                'type': 'high_activity',
-                'severity': 'info',
-                'message': 'Повышенная активность пользователей'
-            })
-
-        return alerts
 
     async def _calculate_region_summary(
             self,

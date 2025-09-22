@@ -75,6 +75,36 @@ async def get_regional_dashboard(
 
 # ========== РЕГИОНЫ И ГОРОДА ==========
 
+@router.get("/regions/sentiment-map", summary="Регионы с sentiment анализом для карты")
+async def get_regions_sentiment_map(
+        min_reviews: int = Query(0, ge=0, description="Минимальное количество отзывов"),
+        include_cities: bool = Query(False, description="Включить города (пока не реализовано)"),
+        dashboard_service: DashboardService = Depends(get_dashboard_service)
+):
+    """
+    Получить регионы с sentiment анализом и готовыми цветами для визуализации на карте.
+
+    Возвращает:
+    - region_name: название региона
+    - region_code: код региона
+    - reviews_count: количество отзывов
+    - positive/negative_percentage: процентное соотношение
+    - sentiment_score: оценка от -1 до 1
+    - color: HEX цвет для карты (#228B22, #FA8072, #E2B007)
+    - color_intensity: прозрачность от 0 до 1
+    """
+    try:
+        return await dashboard_service.get_regions_sentiment_map(
+            min_reviews=min_reviews,
+            include_cities=include_cities
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка получения карты sentiment регионов: {str(e)}"
+        )
+
+
 @router.get("/regions", summary="Все встречающиеся регионы в отзывах")
 async def get_regions(
         include_cities: bool = Query(False, description="Включить города для каждого региона"),

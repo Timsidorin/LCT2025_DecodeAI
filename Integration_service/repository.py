@@ -1,4 +1,5 @@
 # repository/review_analytics_repository.py
+
 from sqlalchemy import func, text, desc, asc, case, extract, and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
@@ -77,6 +78,67 @@ class ReviewAnalyticsRepository:
 
         return gender_data
 
+    async def get_source_distribution(self, filters: Optional[ReviewFilters] = None) -> Dict[str, int]:
+        """Распределение по источникам"""
+        query = select(
+            Review.source,
+            func.count(Review.uuid).label('count')
+        ).group_by(Review.source)
+
+        if filters:
+            query = self._apply_filters(query, filters)
+
+        result = await self.session.execute(query)
+        return {row.source or 'unknown': row.count for row in result}
+
+    async def get_growth_metrics(self, period_hours: int = 24) -> Dict[str, Any]:
+        """Метрики роста за указанный период"""
+        period_start = datetime.now() - timedelta(hours=period_hours)
+
+        current_query = select(func.count(Review.uuid)).where(Review.created_at >= period_start)
+        total_query = select(func.count(Review.uuid))
+
+        current_result = await self.session.execute(current_query)
+        total_result = await self.session.execute(total_query)
+
+        current_count = current_result.scalar() or 0
+        total_count = total_result.scalar() or 0
+
+        return {
+            'period_hours': period_hours,
+            'new_reviews': current_count,
+            'total_reviews': total_count,
+            'growth_rate': round((current_count / total_count * 100) if total_count > 0 else 0, 2)
+        }
+
+    async def get_recent_activity(self, minutes_back: int = 60, limit: int = 10) -> List[Dict[str, Any]]:
+        """Недавняя активность"""
+        time_threshold = datetime.now() - timedelta(minutes=minutes_back)
+
+        query = select(
+            Review.uuid,
+            Review.text,
+            Review.rating,
+            Review.region,
+            Review.city,
+            Review.created_at
+        ).where(
+            Review.created_at >= time_threshold
+        ).order_by(desc(Review.created_at)).limit(limit)
+
+        result = await self.session.execute(query)
+
+        return [
+            {
+                'uuid': str(row.uuid),
+                'text': row.text[:100] + "..." if len(row.text) > 100 else row.text,
+                'rating': row.rating,
+                'region': row.region,
+                'city': row.city,
+                'created_at': row.created_at.isoformat() if row.created_at else None
+            }
+            for row in result
+        ]
 
     # ========== РЕГИОНАЛЬНАЯ АНАЛИТИКА ==========
 
@@ -489,6 +551,109 @@ class ReviewAnalyticsRepository:
             }
             for row in result
         ]
+
+    # ========== SENTIMENT MAP METHODS ==========
+
+    async def get_regions_with_sentiment_colors(self, min_reviews: int = 0) -> List[Dict[str, Any]]:
+        """Получение регионов с sentiment анализом и цветами для карты"""
+        query = select(
+            Review.region,
+            Review.region_code,
+            func.count(Review.uuid).label('reviews_count'),
+            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_reviews'),
+            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_reviews'),
+            func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral_reviews')
+        ).where(
+            and_(
+                Review.region.isnot(None),
+                Review.region_code.isnot(None)
+            )
+        ).group_by(
+            Review.region,
+            Review.region_code
+        ).having(
+            func.count(Review.uuid) >= min_reviews
+        ).order_by(
+            desc('reviews_count')
+        )
+
+        result = await self.session.execute(query)
+
+        all_data = []
+        for row in result:
+            total = row.reviews_count
+            positive_count = row.positive_reviews
+            negative_count = row.negative_reviews
+            positive_percentage = (positive_count / total * 100) if total > 0 else 0
+            negative_percentage = (negative_count / total * 100) if total > 0 else 0
+            sentiment_score = ((positive_count - negative_count) / total) if total > 0 else 0
+
+            all_data.append({
+                'row': row,
+                'total': total,
+                'positive_count': positive_count,
+                'negative_count': negative_count,
+                'positive_percentage': positive_percentage,
+                'negative_percentage': negative_percentage,
+                'sentiment_score': sentiment_score
+            })
+        all_scores = [item['sentiment_score'] for item in all_data]
+
+        regions_with_colors = []
+        for item in all_data:
+            color, intensity = self._get_sentiment_color_scheme_relative(
+                item['sentiment_score'], all_scores
+            )
+
+            regions_with_colors.append({
+                'region_name': item['row'].region,
+                'region_code': item['row'].region_code,
+                'reviews_count': item['total'],
+                'positive_reviews': item['positive_count'],
+                'negative_reviews': item['negative_count'],
+                'neutral_reviews': item['row'].neutral_reviews,
+                'positive_percentage': round(item['positive_percentage'], 2),
+                'negative_percentage': round(item['negative_percentage'], 2),
+                'sentiment_score': round(item['sentiment_score'], 3),
+                'color': color,
+                'color_intensity': intensity
+            })
+
+        return regions_with_colors
+
+    def _get_sentiment_color_scheme_relative(self, sentiment_score: float, all_scores: List[float]) -> tuple[
+        str, float]:
+        """Определяет цвет относительно всех регионов"""
+        GREEN = "#228B22"  # Лучшие регионы
+        GOLD = "#E2B007"  # Средние регионы
+        SALMON = "#FA8072"  # Худшие регионы
+
+        # Сортируем все scores
+        sorted_scores = sorted(all_scores)
+        total_regions = len(sorted_scores)
+
+        try:
+            position = sorted_scores.index(sentiment_score)
+        except ValueError:
+            position = 0
+            for i, score in enumerate(sorted_scores):
+                if score >= sentiment_score:
+                    position = i
+                    break
+
+        percentile = position / total_regions if total_regions > 0 else 0
+
+        if percentile >= 0.8:  # Топ 20% - зеленый
+            return GREEN, 0.8
+        elif percentile >= 0.6:  # 60-80% - светло-зеленый
+            return GREEN, 0.5
+        elif percentile >= 0.4:  # 40-60% - желтый
+            return GOLD, 0.6
+        elif percentile >= 0.2:  # 20-40% - оранжевый
+            return SALMON, 0.5
+        else:  # Нижние 20% - красный
+            return SALMON, 0.8
+
 
     def _apply_filters(self, query, filters: ReviewFilters):
         """Применение фильтров к запросу с учетом вашей модели"""
