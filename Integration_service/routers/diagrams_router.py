@@ -350,3 +350,22 @@ async def get_recent_activity(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка получения недавней активности: {str(e)}")
 
+
+
+@router.get("/regions", summary="Все встречающиеся регионы в отзывах")
+async def get_recent_activity(
+        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
+):
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения недавней активности: {str(e)}")
+
+
+
+@router.get("/region/citys", summary="Все города в регионе")
+async def get_recent_activity(
+        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
+):
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения недавней активности: {str(e)}")
