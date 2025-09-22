@@ -8,7 +8,7 @@ from core.config import configs
 from core.broker import KafkaBrokerManager
 from core.database import get_async_session
 from repository import ReviewRepository
-from shemas.review import ReviewCreate, ReviewResponse
+from shemas.review import ReviewResponse, ReviewPredict, PredictionOutput
 from ReviewService import ReviewService
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -73,14 +73,14 @@ def get_review_service(
 
 # Маршруты
 @app.post(
-    "/api/reviews",
-    response_model=ReviewResponse,
+    "/predict",
+    response_model=PredictionOutput,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Создать новый отзыв",
+    summary="Обработать новые отзывы",
     description="Принимает отзыв, публикует в Kafka и сохраняет в БД"
 )
-async def create_review(
-    review: ReviewCreate,
+async def predict_reviews(
+    review: ReviewPredict,
     service: ReviewService = Depends(get_review_service)
 ) -> ReviewResponse:
     try:
@@ -97,7 +97,7 @@ async def root():
     return {
         "name": "Pulse Review API",
         "version": "1.0.0",
-        "endpoints": {"create_review": "/reviews"}
+        "endpoints": {"predict reviews": "/predict"}
     }
 
 
