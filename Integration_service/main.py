@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from routers.diagrams_router import diagrams_router
+from Integration_service.routers.diagrams_router import router
 from core.config import configs
 import logging
 
@@ -39,7 +39,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(diagrams_router)
+app.include_router(router)
 
 
 if __name__ == "__main__":
