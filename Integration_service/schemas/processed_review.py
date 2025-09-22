@@ -162,3 +162,28 @@ class ReviewTrends(BaseModel):
     daily_stats: List[Dict[str, Any]] = Field(..., description="Статистика по дням")
     weekly_stats: List[Dict[str, Any]] = Field(..., description="Статистика по неделям")
     monthly_stats: List[Dict[str, Any]] = Field(..., description="Статистика по месяцам")
+
+
+class DashboardSummary(BaseModel):
+    """Основная сводка дашборда"""
+    total_reviews: int = Field(..., description="Общее количество отзывов")
+    sentiment_distribution: Dict[str, int] = Field(..., description="Распределение по тональности")
+    gender_distribution: Dict[str, int] = Field(..., description="Распределение по полу")
+    source_distribution: Dict[str, int] = Field(..., description="Распределение по источникам")
+    recent_activity: List[Dict[str, Any]] = Field(..., description="Недавняя активность")
+    growth_metrics: Dict[str, Any] = Field(..., description="Метрики роста")
+    last_updated: datetime = Field(..., description="Время последнего обновления")
+
+class RegionalDashboard(BaseModel):
+    """Региональная аналитика"""
+    regional_stats: List[Dict[str, Any]] = Field(..., description="Статистика по регионам")
+    city_stats: List[Dict[str, Any]] = Field(..., description="Статистика по городам")
+    region_sentiment: Dict[str, int] = Field(None, description="Тональность по региону")
+    region_trends: List[Dict[str, Any]] = Field(None, description="Тренды региона")
+    last_updated: datetime = Field(..., description="Время последнего обновления")
+
+class RealTimeMetrics(BaseModel):
+    """Метрики реального времени"""
+    recent_reviews: List[Dict[str, Any]] = Field(..., description="Недавние отзывы")
+    current_timestamp: datetime = Field(..., description="Текущее время")
+    period_minutes: int = Field(..., description="Период в минутах")
