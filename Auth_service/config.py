@@ -23,10 +23,10 @@ class Configs(BaseSettings):
     )  # Время жизни токена
 
     # ------------ БД ------------
-    DB_HOST: Optional[str] = Field(default="127.127.126.5", env="DB_HOST")
+    DB_HOST: Optional[str] = Field(default="localhost", env="DB_HOST")
     DB_PORT: Optional[int] = Field(default=5432, env="DB_PORT")
-    DB_USER: Optional[str] = Field(default="postgres", env="DATABASE_USERNAME")
-    DB_NAME: Optional[str] = Field(default="auth", env="DATABASE_NAME")
+    DB_USER: Optional[str] = Field(default="admin", env="DATABASE_USERNAME")
+    DB_NAME: Optional[str] = Field(default="DecodeAI", env="DATABASE_NAME")
     DB_PASS: Optional[str] = Field(default="admin", env="DATABASE_PASSWORD")
 
 
