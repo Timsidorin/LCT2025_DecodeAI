@@ -53,10 +53,16 @@ class Review(Base):
         comment="Город автора отзыва"
     )
 
+    region: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Регион"
+    )
+
     region_code: Mapped[Optional[str]] = mapped_column(
         String(20),
         nullable=True,
-        comment="Регион (автоопределение)"
+        comment="Код региона"
     )
 
     datetime_review: Mapped[datetime] = mapped_column(
