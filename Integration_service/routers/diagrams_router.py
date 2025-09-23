@@ -27,6 +27,9 @@ async def get_dashboard_service(
 
 # ========== ОСНОВНЫЕ ДАШБОРД ЭНДПОИНТЫ ==========
 
+
+
+
 @router.get("/summary", response_model=Dict[str, Any], summary="Основная сводка дашборда")
 async def get_dashboard_summary(
         rating: Optional[RatingFilter] = Query(None, description="Фильтр по тональности"),
@@ -57,6 +60,40 @@ async def get_dashboard_summary(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка получения сводки: {str(e)}")
 
+
+@router.get("/regions/sentiment-heatmap", summary="Тепловая карта регионов по выбранному типу отзывов")
+async def get_regions_sentiment_heatmap(
+        sentiment_filter: RatingFilter = Query(..., description="Тип отзывов для отображения"),
+        min_reviews: int = Query(0, ge=0, description="Минимальное количество отзывов"),
+        dashboard_service: DashboardService = Depends(get_dashboard_service)
+):
+    """
+    Получить тепловую карту регионов с фокусом на определенный тип отзывов.
+
+    Параметры:
+    - sentiment_filter: positive/negative/neutral - тип отзывов для фильтра
+    - min_reviews: минимальное количество отзывов в регионе
+
+    Возвращает:
+    - Регионы окрашенные в оттенки выбранного цвета
+    - Зеленый для positive, красный для negative, желтый для neutral
+    - Интенсивность цвета зависит от концентрации выбранного типа отзывов
+    """
+    try:
+        sentiment_value = sentiment_filter.value  # Получаем строковое значение из enum
+
+        heatmap_data = await dashboard_service.get_regions_sentiment_heatmap_filtered(
+            sentiment_filter=sentiment_value,
+            min_reviews=min_reviews
+        )
+
+        return heatmap_data
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка получения тепловой карты по {sentiment_filter.value} отзывам: {str(e)}"
+        )
 
 @router.get("/regional", response_model=Dict[str, Any], summary="Региональная аналитика")
 async def get_regional_dashboard(
