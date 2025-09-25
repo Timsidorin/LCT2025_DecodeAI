@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from Integration_service.routers.diagrams_router import router
+from routers.diagrams_router import router
 from core.config import configs
 import logging
 

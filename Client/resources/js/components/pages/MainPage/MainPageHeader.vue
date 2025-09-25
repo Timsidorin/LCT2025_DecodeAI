@@ -5,8 +5,13 @@
                 <q-toolbar-title class="q-ml-xl">
                     Газпромбанк.тех
                 </q-toolbar-title>
+                <MainPageHeaderUrlsSources/>
             </q-toolbar>
             <RouterTabs/>
+            <hr/>
+            <div id="lower-toolbar" class="q-ml-xl q-pa-md">
+                <router-view name="groupButtons"></router-view>
+            </div>
         </q-header>
         <q-page-container>
             <div class="q-ma-xl">
@@ -18,4 +23,13 @@
 
 <script setup>
 import RouterTabs from "./Header/RouterTabs.vue";
+import MainPageHeaderUrlsSources from "./Header/MainPageHeaderUrlsSources.vue";
 </script>
+
+<style>
+hr {
+    margin-top: 0;
+    border: none;
+    border-top: 1px solid #bcbcbc;
+}
+</style>

@@ -5,7 +5,7 @@ from uuid import uuid4
 from sqlalchemy import String, Text, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
-from Integration_service.core.database import Base
+from core.database import Base
 
 
 class Review(Base):

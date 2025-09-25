@@ -1,5 +1,6 @@
 :root {
-    --gazprom-color: #2B61EC
+    --gazprom-color: #2B61EC;
+    --text-grey-color: #616161
 }
 
 body {

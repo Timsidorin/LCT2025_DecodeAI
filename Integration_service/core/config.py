@@ -12,7 +12,7 @@ class Configs(BaseSettings):
     PROJECT_NAME:str = "Модуль интеграции с фронтендом"
 
     # ------------ БД ------------
-    DB_HOST: Optional[str] = Field(default="localhost", env="DB_HOST")
+    DB_HOST: Optional[str] = Field(default="127.127.126.5", env="DB_HOST")
     DB_PORT: Optional[int] = Field(default=5432, env="DB_PORT")
     DB_USER: Optional[str] = Field(default="postgres", env="DATABASE_USERNAME")
     DB_NAME: Optional[str] = Field(default="DecodeAI", env="DATABASE_NAME")

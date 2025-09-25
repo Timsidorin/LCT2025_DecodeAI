@@ -2,8 +2,8 @@
 import asyncio
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-from ..repository import  ReviewAnalyticsRepository
-from ..schemas.processed_review import ReviewFilters
+from repository import  ReviewAnalyticsRepository
+from schemas.processed_review import ReviewFilters
 
 
 class DashboardService:

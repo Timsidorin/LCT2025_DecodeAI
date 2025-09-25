@@ -7,22 +7,22 @@ export const router = createRouter({
     routes
 });
 
-router.beforeEach(async (to, from, next) => {
-    if (to.href.includes('/main')) {
-        let tokenAuth = localStorage.getItem('bearerToken');
-        let auth = false;
-
-        if (tokenAuth) {
-            let authClient = new AuthApi();
-            auth = await authClient.checkAuth(tokenAuth);
-        }
-        if (!auth.data?.uuid) {
-            next({ name: 'error' });
-        } else {
-            next();
-        }
-
-    } else {
-        next();
-    }
-});
+// router.beforeEach(async (to, from, next) => {
+//     if (to.href.includes('/main')) {
+//         let tokenAuth = localStorage.getItem('bearerToken');
+//         let auth = false;
+//
+//         if (tokenAuth) {
+//             let authClient = new AuthApi();
+//             auth = await authClient.checkAuth(tokenAuth);
+//         }
+//         if (!auth.data?.uuid) {
+//             next({ name: 'error' });
+//         } else {
+//             next();
+//         }
+//
+//     } else {
+//         next();
+//     }
+// });

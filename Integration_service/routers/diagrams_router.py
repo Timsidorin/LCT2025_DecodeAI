@@ -4,10 +4,10 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from Integration_service.core.database import get_async_session
-from Integration_service.repository import ReviewAnalyticsRepository
-from Integration_service.services.DashBoardService import DashboardService
-from Integration_service.schemas.processed_review import ReviewFilters, RatingFilter, GenderFilter
+from core.database import get_async_session
+from repository import ReviewAnalyticsRepository
+from services.DashBoardService import DashboardService
+from schemas.processed_review import ReviewFilters, RatingFilter, GenderFilter
 
 router = APIRouter(prefix="/api/dashboard", tags=["Дашборд аналитика"])
 

@@ -2,7 +2,7 @@ import {BaseApi} from "./BaseApi.js";
 
 export class AuthApi extends BaseApi{
     constructor() {
-        super('https://lct-2025')
+        super(__BASE__LARAVEL__URL__);
     }
 
     async login(data) {

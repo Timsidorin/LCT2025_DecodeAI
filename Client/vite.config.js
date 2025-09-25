@@ -11,5 +11,9 @@ export default defineConfig({
             'resources/js/app.js',
         ]),
         quasar()
-    ]
+    ],
+    define: {
+        __BASE__LARAVEL__URL__: JSON.stringify('https://lct-2025'),
+        __BASE__PYTHON__URL__: JSON.stringify('https://divisively-preferred-gorilla.cloudpub.ru'),
+    },
 })
