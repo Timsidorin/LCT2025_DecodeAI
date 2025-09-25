@@ -14,6 +14,131 @@ class ReviewAnalyticsRepository:
 
     # ========== ОСНОВНАЯ СТАТИСТИКА ==========
 
+    async def get_regions_with_filtered_sentiment_heatmap(
+            self,
+            sentiment_filter: str,
+            min_reviews: int = 0
+    ) -> List[Dict[str, Any]]:
+        """Получение регионов с фильтром по типу sentiment для тепловой карты"""
+
+        query = select(
+            Review.region,
+            Review.region_code,
+            func.count(Review.uuid).label('total_reviews'),
+            func.sum(case((Review.rating == sentiment_filter, 1), else_=0)).label('target_sentiment_count'),
+            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_reviews'),
+            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_reviews'),
+            func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral_reviews')
+        ).where(
+            and_(
+                Review.region.isnot(None),
+                Review.region_code.isnot(None)
+            )
+        ).group_by(
+            Review.region,
+            Review.region_code
+        ).having(
+            func.count(Review.uuid) >= min_reviews
+        ).order_by(
+            desc('target_sentiment_count')
+        )
+
+        result = await self.session.execute(query)
+
+        all_data = []
+        for row in result:
+            total = row.total_reviews
+            target_count = row.target_sentiment_count
+
+            # Процент целевого типа отзывов
+            target_percentage = (target_count / total * 100) if total > 0 else 0
+
+            all_data.append({
+                'row': row,
+                'total': total,
+                'target_count': target_count,
+                'target_percentage': target_percentage
+            })
+
+        # Получаем все проценты для определения относительных цветов
+        all_percentages = [item['target_percentage'] for item in all_data]
+
+        regions_with_colors = []
+        for item in all_data:
+            rgb_color = self._get_single_sentiment_color_scheme(
+                sentiment_filter, item['target_percentage'], all_percentages
+            )
+
+            regions_with_colors.append({
+                'region_name': item['row'].region,
+                'region_code': item['row'].region_code,
+                'total_reviews': item['total'],
+                'target_sentiment_count': item['target_count'],
+                'target_sentiment_percentage': round(item['target_percentage'], 2),
+                'positive_reviews': item['row'].positive_reviews,
+                'negative_reviews': item['row'].negative_reviews,
+                'neutral_reviews': item['row'].neutral_reviews,
+                'color': rgb_color,  # Теперь в формате "(r g b)"
+                'sentiment_filter': sentiment_filter
+            })
+
+        return regions_with_colors
+
+    def _get_single_sentiment_color_scheme(
+            self,
+            sentiment_type: str,
+            percentage: float,
+            all_percentages: List[float]
+    ) -> str:
+        """Определяет RGB цвет для одного типа sentiment в оттенках выбранного цвета"""
+
+        # Базовые цвета для каждого типа sentiment
+        BASE_COLORS = {
+            'positive': (34, 139, 34),  # Зеленый RGB
+            'negative': (220, 20, 60),  # Красный RGB
+            'neutral': (255, 215, 0)  # Желтый RGB
+        }
+
+        base_rgb = BASE_COLORS.get(sentiment_type, (128, 128, 128))
+
+        # Определяем интенсивность на основе процентиля
+        sorted_percentages = sorted(all_percentages)
+        total_regions = len(sorted_percentages)
+
+        if total_regions == 0:
+            intensity = 0.3
+        else:
+            try:
+                position = sorted_percentages.index(percentage)
+            except ValueError:
+                position = 0
+                for i, pct in enumerate(sorted_percentages):
+                    if pct >= percentage:
+                        position = i
+                        break
+
+            percentile = position / total_regions if total_regions > 0 else 0
+
+            # Интенсивность от 0.2 до 0.9
+            if percentile >= 0.8:
+                intensity = 0.9
+            elif percentile >= 0.6:
+                intensity = 0.7
+            elif percentile >= 0.4:
+                intensity = 0.5
+            elif percentile >= 0.2:
+                intensity = 0.4
+            else:
+                intensity = 0.2
+
+        # Применяем интенсивность к RGB цвету
+        # Чем меньше intensity, тем светлее цвет (ближе к белому)
+        r = int(base_rgb[0] * intensity + 255 * (1 - intensity))
+        g = int(base_rgb[1] * intensity + 255 * (1 - intensity))
+        b = int(base_rgb[2] * intensity + 255 * (1 - intensity))
+
+        return f"({r} {g} {b})"
+
     async def get_total_reviews_count(self, filters: Optional[ReviewFilters] = None) -> int:
         """Общее количество отзывов"""
         query = select(func.count(Review.uuid))
@@ -624,9 +749,9 @@ class ReviewAnalyticsRepository:
     def _get_sentiment_color_scheme_relative(self, sentiment_score: float, all_scores: List[float]) -> tuple[
         str, float]:
         """Определяет цвет относительно всех регионов"""
-        GREEN = "#228B22"  # Лучшие регионы
-        GOLD = "#E2B007"  # Средние регионы
-        SALMON = "#FA8072"  # Худшие регионы
+        GREEN = "#00B050"  # Лучшие регионы
+        GOLD = "#FFC000"  # Средние регионы
+        SALMON = "#e03c32"  # Худшие регионы
 
         # Сортируем все scores
         sorted_scores = sorted(all_scores)

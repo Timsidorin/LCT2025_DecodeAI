@@ -7,7 +7,7 @@ import os
 class Configs(BaseSettings):
     # ------------ Веб-сервер ------------
     HOST: str = "localhost"
-    PORT: int = 8007
+    PORT: int = 8009
 
     PROJECT_NAME:str = "Модуль интеграции с фронтендом"
 

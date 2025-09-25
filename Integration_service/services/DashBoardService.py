@@ -46,6 +46,90 @@ class DashboardService:
             'last_updated': datetime.now().isoformat()
         }
 
+    async def get_regions_sentiment_heatmap_filtered(
+            self,
+            sentiment_filter: str,
+            min_reviews: int = 0
+    ) -> Dict[str, Any]:
+        """Получить регионы с фильтром по типу sentiment для тепловой карты"""
+
+        regions_data = await self.analytics_repo.get_regions_with_filtered_sentiment_heatmap(
+            sentiment_filter, min_reviews
+        )
+
+        # Аналитика по отфильтрованным данным
+        if regions_data:
+            total_regions = len(regions_data)
+            total_target_reviews = sum(r['target_sentiment_count'] for r in regions_data)
+            total_all_reviews = sum(r['total_reviews'] for r in regions_data)
+
+            # Топ регионы по целевому sentiment
+            top_regions = sorted(
+                regions_data,
+                key=lambda x: x['target_sentiment_count'],
+                reverse=True
+            )[:5]
+
+            # Регионы с высоким процентом
+            high_percentage_regions = [
+                r for r in regions_data
+                if r['target_sentiment_percentage'] > 70
+            ]
+
+            analytics = {
+                'total_regions': total_regions,
+                'total_target_reviews': total_target_reviews,
+                'total_all_reviews': total_all_reviews,
+                'average_target_percentage': round(
+                    sum(r['target_sentiment_percentage'] for r in regions_data) / total_regions, 2
+                ),
+                'top_regions': [
+                    {
+                        'region_name': r['region_name'],
+                        'region_code': r['region_code'],
+                        'count': r['target_sentiment_count'],
+                        'percentage': r['target_sentiment_percentage']
+                    }
+                    for r in top_regions
+                ],
+                'high_percentage_regions_count': len(high_percentage_regions),
+                'sentiment_filter_applied': sentiment_filter
+            }
+        else:
+            analytics = {}
+
+        # Цветовая схема в зависимости от выбранного sentiment
+        color_schemes = {
+            'positive': {
+                'name': 'Зеленые оттенки',
+                'base_color': '#228B22',
+                'description': 'Интенсивность зеленого показывает концентрацию позитивных отзывов'
+            },
+            'negative': {
+                'name': 'Красные оттенки',
+                'base_color': '#DC143C',
+                'description': 'Интенсивность красного показывает концентрацию негативных отзывов'
+            },
+            'neutral': {
+                'name': 'Желтые оттенки',
+                'base_color': '#FFD700',
+                'description': 'Интенсивность желтого показывает концентрацию нейтральных отзывов'
+            }
+        }
+
+        response = {
+            'regions': regions_data,
+            'total_regions': len(regions_data),
+            'sentiment_filter': sentiment_filter,
+            'min_reviews_filter': min_reviews,
+            'color_scheme': color_schemes.get(sentiment_filter, color_schemes['positive']),
+            'analytics': analytics,
+            'timestamp': datetime.now().isoformat()
+        }
+
+        return response
+
+
     async def get_regional_dashboard(
             self,
             region_code: Optional[str] = None,
