@@ -15,7 +15,6 @@ engine = create_async_engine(DATABASE_URL)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
-
 class Base(AsyncAttrs, DeclarativeBase):
     __abstract__ = True
     __table_args__ = {"extend_existing": True}

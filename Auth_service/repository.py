@@ -19,15 +19,11 @@ class UserRepository:
             hashed_password = get_password_hash(user_data.password)
 
             # Создаем пользователя
-            new_user = User(
-                username=user_data.username,
-                password=hashed_password
-            )
+            new_user = User(username=user_data.username, password=hashed_password)
 
             self.session.add(new_user)
             await self.session.commit()
             await self.session.refresh(new_user)
-
             return new_user
         except IntegrityError:
             await self.session.rollback()
@@ -67,7 +63,9 @@ class UserRepository:
             await self.session.rollback()
             raise e
 
-    async def update_user_password(self, user_uuid: UUID, new_password: str) -> Optional[User]:
+    async def update_user_password(
+        self, user_uuid: UUID, new_password: str
+    ) -> Optional[User]:
         """Обновление пароля пользователя"""
         try:
             user = await self.get_user_by_uuid(user_uuid)

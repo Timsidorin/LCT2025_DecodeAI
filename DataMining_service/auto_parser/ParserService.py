@@ -31,15 +31,15 @@ async def get_and_publish_reviews():
 
     if result:
         async for review_service in create_review_service():
-            for review in result['reviews']:
+            for review in result["reviews"]:
                 serialized_review = ReviewCreate(
-                    source=review['source_id'],
-                    text=review['text'],
-                    datetime_review=review['datetime_review'],
+                    source=review["source_id"],
+                    text=review["text"],
+                    datetime_review=review["datetime_review"],
                     rating=None,
                     product=None,
-                    city=review.get('city'),
-                    region_code=review.get('region_code')
+                    city=review.get("city"),
+                    region_code=review.get("region_code"),
                 )
                 print(serialized_review)
                 await review_service.create_review(serialized_review)

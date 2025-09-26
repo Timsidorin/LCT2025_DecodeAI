@@ -9,7 +9,7 @@ class Configs(BaseSettings):
     HOST: str = "localhost"
     PORT: int = 8009
 
-    PROJECT_NAME:str = "Модуль интеграции с фронтендом"
+    PROJECT_NAME: str = "Модуль интеграции с фронтендом"
 
     # ------------ БД ------------
     DB_HOST: Optional[str] = Field(default="127.127.126.5", env="DB_HOST")
@@ -17,7 +17,6 @@ class Configs(BaseSettings):
     DB_USER: Optional[str] = Field(default="postgres", env="DATABASE_USERNAME")
     DB_NAME: Optional[str] = Field(default="DecodeAI", env="DATABASE_NAME")
     DB_PASS: Optional[str] = Field(default="admin", env="DATABASE_PASSWORD")
-
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")

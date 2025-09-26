@@ -6,7 +6,7 @@ import asyncio
 
 
 class KafkaBrokerManager:
-    _instance: Optional['KafkaBrokerManager'] = None
+    _instance: Optional["KafkaBrokerManager"] = None
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -14,7 +14,7 @@ class KafkaBrokerManager:
         return cls._instance
 
     def __init__(self, bootstrap_server: str = configs.BOOTSTRAP_SERVICE):
-        if not hasattr(self, '_initialized'):
+        if not hasattr(self, "_initialized"):
             self.bootstrap_servers = bootstrap_server
             self._broker: Optional[KafkaBroker] = None
             self._is_started = False
@@ -61,14 +61,10 @@ class KafkaBrokerManager:
 
             # Подготовка ключа
             if key is not None and isinstance(key, str):
-                key = key.encode('utf-8')
+                key = key.encode("utf-8")
 
             # Публикация
-            await self._broker.publish(
-                message=message,
-                topic=topic,
-                key=key
-            )
+            await self._broker.publish(message=message, topic=topic, key=key)
             print(f"Сообщение опубликовано в топик {topic}")
 
         except Exception as e:
@@ -93,7 +89,7 @@ class KafkaBrokerManager:
 
     def __del__(self):
         """Деструктор для принудительной очистки"""
-        if hasattr(self, '_broker') and self._broker and self._is_started:
+        if hasattr(self, "_broker") and self._broker and self._is_started:
             try:
                 # Создаем новый event loop если его нет
                 loop = asyncio.get_event_loop()

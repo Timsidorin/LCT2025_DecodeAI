@@ -10,7 +10,9 @@ class ReviewCreate(BaseModel):
     gender: Optional[str] = Field(None, description="Пол написавшего")
     city: Optional[str] = Field(None, description="Город")
     region_code: Optional[str] = Field(None, description="Код региона")
-    datetime_review: Optional[datetime] = Field(None, description="Дата и время создания отзыва")
+    datetime_review: Optional[datetime] = Field(
+        None, description="Дата и время создания отзыва"
+    )
 
 
 class ReviewResponse(BaseModel):
@@ -27,7 +29,6 @@ class ReviewResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 
 class ReviewUpdate(BaseModel):

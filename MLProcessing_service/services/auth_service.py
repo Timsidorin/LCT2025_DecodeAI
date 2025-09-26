@@ -1,4 +1,3 @@
-
 import httpx
 import logging
 from fastapi import HTTPException, status
@@ -19,35 +18,37 @@ class AuthService:
                 response = await client.get(
                     f"{self.auth_service_url}/api/auth/me",
                     headers={"Authorization": f"Bearer {token}"},
-                    timeout=10.0
+                    timeout=10.0,
                 )
                 if response.status_code == 200:
                     user_data = response.json()
-                    logger.info(f"Токен успешно проверен для пользователя: {user_data.get('username', 'unknown')}")
+                    logger.info(
+                        f"Токен успешно проверен для пользователя: {user_data.get('username', 'unknown')}"
+                    )
                     return user_data
                 elif response.status_code == 401:
                     logger.warning("Получен недействительный токен")
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
                         detail="Недействительный токен",
-                        headers={"WWW-Authenticate": "Bearer"}
+                        headers={"WWW-Authenticate": "Bearer"},
                     )
                 else:
                     logger.error(f"Auth-сервис вернул ошибку: {response.status_code}")
                     raise HTTPException(
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                        detail="Сервис авторизации недоступен"
+                        detail="Сервис авторизации недоступен",
                     )
 
         except httpx.TimeoutException:
             logger.error("Таймаут при обращении к auth-сервису")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Сервис авторизации недоступен"
+                detail="Сервис авторизации недоступен",
             )
         except httpx.RequestError as e:
             logger.error(f"Ошибка при обращении к auth-сервису: {e}")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Ошибка соединения с сервисом авторизации"
+                detail="Ошибка соединения с сервисом авторизации",
             )
