@@ -12,67 +12,47 @@ class Review(Base):
     """
     Модель для таблицы отзывов
     """
+
     __tablename__ = "reviews"
 
     uuid: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        default=uuid4
+        UUID(as_uuid=True), primary_key=True, default=uuid4
     )
     source: Mapped[str] = mapped_column(
-        String(100),
-        nullable=False,
-        default="API",
-        comment="Источник отзыва"
+        String(100), nullable=False, default="API", comment="Источник отзыва"
     )
-    text: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-        comment="Текст отзыва"
-    )
+    text: Mapped[str] = mapped_column(Text, nullable=False, comment="Текст отзыва")
 
     # Убираем enum, используем простые строки
     rating: Mapped[Optional[str]] = mapped_column(
         String(50),
         nullable=True,
-        comment="Тональность отзыва (positive/negative/neutral)"
+        comment="Тональность отзыва (positive/negative/neutral)",
     )
     product: Mapped[Optional[str]] = mapped_column(
-        String(255),
-        nullable=True,
-        comment="Название продукта"
+        String(255), nullable=True, comment="Название продукта"
     )
     gender: Mapped[Optional[str]] = mapped_column(
-        String(20),
-        nullable=True,
-        comment="Пол автора отзыва (male/female/unknown)"
+        String(20), nullable=True, comment="Пол автора отзыва (male/female/unknown)"
     )
     city: Mapped[Optional[str]] = mapped_column(
-        String(100),
-        nullable=True,
-        comment="Город автора отзыва"
+        String(100), nullable=True, comment="Город автора отзыва"
     )
 
     region: Mapped[Optional[str]] = mapped_column(
-        String(100),
-        nullable=True,
-        comment="Регион"
+        String(100), nullable=True, comment="Регион"
     )
 
     region_code: Mapped[Optional[str]] = mapped_column(
-        String(20),
-        nullable=True,
-        comment="Код региона"
+        String(20), nullable=True, comment="Код региона"
     )
 
     datetime_review: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        comment="Дата и время написания отзыва"
+        DateTime(timezone=True), nullable=False, comment="Дата и время написания отзыва"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=datetime.now,
-        comment="Время добавления в систему"
+        comment="Время добавления в систему",
     )

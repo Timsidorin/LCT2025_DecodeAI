@@ -9,7 +9,7 @@ class Configs(BaseSettings):
     HOST: str = "localhost"
     PORT: int = 8005
 
-    PROJECT_NAME:str = "Модуль авторизации"
+    PROJECT_NAME: str = "Модуль авторизации"
 
     # ------------ Аутентификация ------------
     SECRET_KEY: str = Field(
@@ -28,7 +28,6 @@ class Configs(BaseSettings):
     DB_USER: Optional[str] = Field(default="admin", env="DATABASE_USERNAME")
     DB_NAME: Optional[str] = Field(default="DecodeAI", env="DATABASE_NAME")
     DB_PASS: Optional[str] = Field(default="admin", env="DATABASE_PASSWORD")
-
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")

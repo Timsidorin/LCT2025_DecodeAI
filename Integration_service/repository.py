@@ -15,32 +15,32 @@ class ReviewAnalyticsRepository:
     # ========== ОСНОВНАЯ СТАТИСТИКА ==========
 
     async def get_regions_with_filtered_sentiment_heatmap(
-            self,
-            sentiment_filter: str,
-            min_reviews: int = 0
+        self, sentiment_filter: str, min_reviews: int = 0
     ) -> List[Dict[str, Any]]:
         """Получение регионов с фильтром по типу sentiment для тепловой карты"""
 
-        query = select(
-            Review.region,
-            Review.region_code,
-            func.count(Review.uuid).label('total_reviews'),
-            func.sum(case((Review.rating == sentiment_filter, 1), else_=0)).label('target_sentiment_count'),
-            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_reviews'),
-            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_reviews'),
-            func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral_reviews')
-        ).where(
-            and_(
-                Review.region.isnot(None),
-                Review.region_code.isnot(None)
+        query = (
+            select(
+                Review.region,
+                Review.region_code,
+                func.count(Review.uuid).label("total_reviews"),
+                func.sum(case((Review.rating == sentiment_filter, 1), else_=0)).label(
+                    "target_sentiment_count"
+                ),
+                func.sum(case((Review.rating == "positive", 1), else_=0)).label(
+                    "positive_reviews"
+                ),
+                func.sum(case((Review.rating == "negative", 1), else_=0)).label(
+                    "negative_reviews"
+                ),
+                func.sum(case((Review.rating == "neutral", 1), else_=0)).label(
+                    "neutral_reviews"
+                ),
             )
-        ).group_by(
-            Review.region,
-            Review.region_code
-        ).having(
-            func.count(Review.uuid) >= min_reviews
-        ).order_by(
-            desc('target_sentiment_count')
+            .where(and_(Review.region.isnot(None), Review.region_code.isnot(None)))
+            .group_by(Review.region, Review.region_code)
+            .having(func.count(Review.uuid) >= min_reviews)
+            .order_by(desc("target_sentiment_count"))
         )
 
         result = await self.session.execute(query)
@@ -53,50 +53,51 @@ class ReviewAnalyticsRepository:
             # Процент целевого типа отзывов
             target_percentage = (target_count / total * 100) if total > 0 else 0
 
-            all_data.append({
-                'row': row,
-                'total': total,
-                'target_count': target_count,
-                'target_percentage': target_percentage
-            })
+            all_data.append(
+                {
+                    "row": row,
+                    "total": total,
+                    "target_count": target_count,
+                    "target_percentage": target_percentage,
+                }
+            )
 
         # Получаем все проценты для определения относительных цветов
-        all_percentages = [item['target_percentage'] for item in all_data]
+        all_percentages = [item["target_percentage"] for item in all_data]
 
         regions_with_colors = []
         for item in all_data:
             rgb_color = self._get_single_sentiment_color_scheme(
-                sentiment_filter, item['target_percentage'], all_percentages
+                sentiment_filter, item["target_percentage"], all_percentages
             )
 
-            regions_with_colors.append({
-                'region_name': item['row'].region,
-                'region_code': item['row'].region_code,
-                'total_reviews': item['total'],
-                'target_sentiment_count': item['target_count'],
-                'target_sentiment_percentage': round(item['target_percentage'], 2),
-                'positive_reviews': item['row'].positive_reviews,
-                'negative_reviews': item['row'].negative_reviews,
-                'neutral_reviews': item['row'].neutral_reviews,
-                'color': rgb_color,  # Теперь в формате "(r g b)"
-                'sentiment_filter': sentiment_filter
-            })
+            regions_with_colors.append(
+                {
+                    "region_name": item["row"].region,
+                    "region_code": item["row"].region_code,
+                    "total_reviews": item["total"],
+                    "target_sentiment_count": item["target_count"],
+                    "target_sentiment_percentage": round(item["target_percentage"], 2),
+                    "positive_reviews": item["row"].positive_reviews,
+                    "negative_reviews": item["row"].negative_reviews,
+                    "neutral_reviews": item["row"].neutral_reviews,
+                    "color": rgb_color,  # Теперь в формате "(r g b)"
+                    "sentiment_filter": sentiment_filter,
+                }
+            )
 
         return regions_with_colors
 
     def _get_single_sentiment_color_scheme(
-            self,
-            sentiment_type: str,
-            percentage: float,
-            all_percentages: List[float]
+        self, sentiment_type: str, percentage: float, all_percentages: List[float]
     ) -> str:
         """Определяет RGB цвет для одного типа sentiment в оттенках выбранного цвета"""
 
         # Базовые цвета для каждого типа sentiment
         BASE_COLORS = {
-            'positive': (34, 139, 34),  # Зеленый RGB
-            'negative': (220, 20, 60),  # Красный RGB
-            'neutral': (255, 215, 0)  # Желтый RGB
+            "positive": (34, 139, 34),  # Зеленый RGB
+            "negative": (220, 20, 60),  # Красный RGB
+            "neutral": (255, 215, 0),  # Желтый RGB
         }
 
         base_rgb = BASE_COLORS.get(sentiment_type, (128, 128, 128))
@@ -131,15 +132,15 @@ class ReviewAnalyticsRepository:
             else:
                 intensity = 0.2
 
-        # Применяем интенсивность к RGB цвету
-        # Чем меньше intensity, тем светлее цвет (ближе к белому)
         r = int(base_rgb[0] * intensity + 255 * (1 - intensity))
         g = int(base_rgb[1] * intensity + 255 * (1 - intensity))
         b = int(base_rgb[2] * intensity + 255 * (1 - intensity))
 
         return f"({r} {g} {b})"
 
-    async def get_total_reviews_count(self, filters: Optional[ReviewFilters] = None) -> int:
+    async def get_total_reviews_count(
+        self, filters: Optional[ReviewFilters] = None
+    ) -> int:
         """Общее количество отзывов"""
         query = select(func.count(Review.uuid))
         if filters:
@@ -148,79 +149,75 @@ class ReviewAnalyticsRepository:
         result = await self.session.execute(query)
         return result.scalar() or 0
 
-    async def get_sentiment_distribution(self, filters: Optional[ReviewFilters] = None) -> Dict[str, int]:
+    async def get_sentiment_distribution(
+        self, filters: Optional[ReviewFilters] = None
+    ) -> Dict[str, int]:
         """Распределение по тональности с правильными значениями"""
-        query = select(
-            Review.rating,
-            func.count(Review.uuid).label('count')
-        ).group_by(Review.rating)
+        query = select(Review.rating, func.count(Review.uuid).label("count")).group_by(
+            Review.rating
+        )
 
         if filters:
             query = self._apply_filters(query, filters)
 
         result = await self.session.execute(query)
 
-        sentiment_data = {
-            'positive': 0,
-            'negative': 0,
-            'neutral': 0,
-            'unknown': 0
-        }
+        sentiment_data = {"positive": 0, "negative": 0, "neutral": 0, "unknown": 0}
 
         for row in result:
-            rating = row.rating or 'unknown'
+            rating = row.rating or "unknown"
             if rating in sentiment_data:
                 sentiment_data[rating] = row.count
             else:
-                sentiment_data['unknown'] += row.count
+                sentiment_data["unknown"] += row.count
 
         return sentiment_data
 
-    async def get_gender_distribution(self, filters: Optional[ReviewFilters] = None) -> Dict[str, int]:
+    async def get_gender_distribution(
+        self, filters: Optional[ReviewFilters] = None
+    ) -> Dict[str, int]:
         """Распределение по полу (male/female/unknown)"""
-        query = select(
-            Review.gender,
-            func.count(Review.uuid).label('count')
-        ).group_by(Review.gender)
+        query = select(Review.gender, func.count(Review.uuid).label("count")).group_by(
+            Review.gender
+        )
 
         if filters:
             query = self._apply_filters(query, filters)
 
         result = await self.session.execute(query)
 
-        gender_data = {
-            'male': 0,
-            'female': 0,
-            'unknown': 0
-        }
+        gender_data = {"male": 0, "female": 0, "unknown": 0}
 
         for row in result:
-            gender = row.gender or 'unknown'
+            gender = row.gender or "unknown"
             if gender in gender_data:
                 gender_data[gender] = row.count
             else:
-                gender_data['unknown'] += row.count
+                gender_data["unknown"] += row.count
 
         return gender_data
 
-    async def get_source_distribution(self, filters: Optional[ReviewFilters] = None) -> Dict[str, int]:
+    async def get_source_distribution(
+        self, filters: Optional[ReviewFilters] = None
+    ) -> Dict[str, int]:
         """Распределение по источникам"""
-        query = select(
-            Review.source,
-            func.count(Review.uuid).label('count')
-        ).group_by(Review.source)
+        query = select(Review.source, func.count(Review.uuid).label("count")).group_by(
+            Review.source
+        )
 
         if filters:
             query = self._apply_filters(query, filters)
 
         result = await self.session.execute(query)
-        return {row.source or 'unknown': row.count for row in result}
+        return {row.source or "unknown": row.count for row in result}
 
     async def get_growth_metrics(self, period_hours: int = 24) -> Dict[str, Any]:
         """Метрики роста за указанный период"""
         period_start = datetime.now() - timedelta(hours=period_hours)
 
-        current_query = select(func.count(Review.uuid)).where(Review.created_at >= period_start)
+        current_query = select(func.count(Review.uuid)).where(
+            Review.created_at >= period_start
+        )
         total_query = select(func.count(Review.uuid))
 
         current_result = await self.session.execute(current_query)
@@ -230,37 +227,44 @@ class ReviewAnalyticsRepository:
         total_count = total_result.scalar() or 0
 
         return {
-            'period_hours': period_hours,
-            'new_reviews': current_count,
-            'total_reviews': total_count,
-            'growth_rate': round((current_count / total_count * 100) if total_count > 0 else 0, 2)
+            "period_hours": period_hours,
+            "new_reviews": current_count,
+            "total_reviews": total_count,
+            "growth_rate": round(
+                (current_count / total_count * 100) if total_count > 0 else 0, 2
+            ),
         }
 
-    async def get_recent_activity(self, minutes_back: int = 60, limit: int = 10) -> List[Dict[str, Any]]:
+    async def get_recent_activity(
+        self, minutes_back: int = 60, limit: int = 10
+    ) -> List[Dict[str, Any]]:
         """Недавняя активность"""
         time_threshold = datetime.now() - timedelta(minutes=minutes_back)
 
-        query = select(
-            Review.uuid,
-            Review.text,
-            Review.rating,
-            Review.region,
-            Review.city,
-            Review.created_at
-        ).where(
-            Review.created_at >= time_threshold
-        ).order_by(desc(Review.created_at)).limit(limit)
+        query = (
+            select(
+                Review.uuid,
+                Review.text,
+                Review.rating,
+                Review.region,
+                Review.city,
+                Review.created_at,
+            )
+            .where(Review.created_at >= time_threshold)
+            .order_by(desc(Review.created_at))
+            .limit(limit)
+        )
 
         result = await self.session.execute(query)
 
         return [
             {
-                'uuid': str(row.uuid),
-                'text': row.text[:100] + "..." if len(row.text) > 100 else row.text,
-                'rating': row.rating,
-                'region': row.region,
-                'city': row.city,
-                'created_at': row.created_at.isoformat() if row.created_at else None
+                "uuid": str(row.uuid),
+                "text": row.text[:100] + "..." if len(row.text) > 100 else row.text,
+                "rating": row.rating,
+                "region": row.region,
+                "city": row.city,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
             }
             for row in result
         ]
@@ -269,78 +273,59 @@ class ReviewAnalyticsRepository:
 
     async def get_unique_regions(self) -> List[Dict[str, Any]]:
         """Получение всех уникальных регионов с их кодами"""
-        query = select(
-            Review.region,
-            Review.region_code,
-            func.count(Review.uuid).label('reviews_count')
-        ).where(
-            and_(
-                Review.region.isnot(None),
-                Review.region_code.isnot(None)
+        query = (
+            select(
+                Review.region,
+                Review.region_code,
+                func.count(Review.uuid).label("reviews_count"),
             )
-        ).group_by(
-            Review.region,
-            Review.region_code
-        ).order_by(
-            desc('reviews_count'),
-            Review.region
+            .where(and_(Review.region.isnot(None), Review.region_code.isnot(None)))
+            .group_by(Review.region, Review.region_code)
+            .order_by(desc("reviews_count"), Review.region)
         )
 
         result = await self.session.execute(query)
 
         regions = []
         for row in result:
-            regions.append({
-                'region_name': row.region,
-                'region_code': row.region_code,
-                'reviews_count': row.reviews_count
-            })
+            regions.append(
+                {
+                    "region_name": row.region,
+                    "region_code": row.region_code,
+                    "reviews_count": row.reviews_count,
+                }
+            )
 
         return regions
 
     async def get_unique_region_codes(self) -> List[Dict[str, Any]]:
         """Получение только уникальных кодов регионов"""
-        query = select(
-            Review.region_code,
-            func.count(Review.uuid).label('reviews_count')
-        ).where(
-            Review.region_code.isnot(None)
-        ).group_by(
-            Review.region_code
-        ).order_by(
-            desc('reviews_count'),
-            Review.region_code
+        query = (
+            select(Review.region_code, func.count(Review.uuid).label("reviews_count"))
+            .where(Review.region_code.isnot(None))
+            .group_by(Review.region_code)
+            .order_by(desc("reviews_count"), Review.region_code)
         )
 
         result = await self.session.execute(query)
 
         return [
-            {
-                'region_code': row.region_code,
-                'reviews_count': row.reviews_count
-            }
+            {"region_code": row.region_code, "reviews_count": row.reviews_count}
             for row in result
         ]
 
     async def get_regions_hierarchy(self) -> Dict[str, Any]:
         """Получение иерархии регионов с городами"""
-        query = select(
-            Review.region,
-            Review.region_code,
-            Review.city,
-            func.count(Review.uuid).label('reviews_count')
-        ).where(
-            and_(
-                Review.region.isnot(None),
-                Review.region_code.isnot(None)
+        query = (
+            select(
+                Review.region,
+                Review.region_code,
+                Review.city,
+                func.count(Review.uuid).label("reviews_count"),
             )
-        ).group_by(
-            Review.region,
-            Review.region_code,
-            Review.city
-        ).order_by(
-            Review.region,
-            desc('reviews_count')
+            .where(and_(Review.region.isnot(None), Review.region_code.isnot(None)))
+            .group_by(Review.region, Review.region_code, Review.city)
+            .order_by(Review.region, desc("reviews_count"))
         )
 
         result = await self.session.execute(query)
@@ -351,39 +336,48 @@ class ReviewAnalyticsRepository:
 
             if region_key not in regions_hierarchy:
                 regions_hierarchy[region_key] = {
-                    'region_name': row.region,
-                    'region_code': row.region_code,
-                    'total_reviews': 0,
-                    'cities': []
+                    "region_name": row.region,
+                    "region_code": row.region_code,
+                    "total_reviews": 0,
+                    "cities": [],
                 }
 
-            regions_hierarchy[region_key]['total_reviews'] += row.reviews_count
+            regions_hierarchy[region_key]["total_reviews"] += row.reviews_count
 
             if row.city:
-                regions_hierarchy[region_key]['cities'].append({
-                    'city_name': row.city,
-                    'reviews_count': row.reviews_count
-                })
+                regions_hierarchy[region_key]["cities"].append(
+                    {"city_name": row.city, "reviews_count": row.reviews_count}
+                )
 
         return {
-            'regions': list(regions_hierarchy.values()),
-            'total_regions': len(regions_hierarchy)
+            "regions": list(regions_hierarchy.values()),
+            "total_regions": len(regions_hierarchy),
         }
 
-    async def get_regional_stats(self, filters: Optional[ReviewFilters] = None, limit: int = 10) -> List[
-        Dict[str, Any]]:
+    async def get_regional_stats(
+        self, filters: Optional[ReviewFilters] = None, limit: int = 10
+    ) -> List[Dict[str, Any]]:
         """Топ регионов по количеству отзывов"""
-        query = select(
-            Review.region_code,
-            Review.region,
-            func.count(Review.uuid).label('total_count'),
-            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_count'),
-            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_count'),
-            func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral_count')
-        ).where(Review.region_code.isnot(None)) \
-            .group_by(Review.region_code, Review.region) \
-            .order_by(desc('total_count')) \
+        query = (
+            select(
+                Review.region_code,
+                Review.region,
+                func.count(Review.uuid).label("total_count"),
+                func.sum(case((Review.rating == "positive", 1), else_=0)).label(
+                    "positive_count"
+                ),
+                func.sum(case((Review.rating == "negative", 1), else_=0)).label(
+                    "negative_count"
+                ),
+                func.sum(case((Review.rating == "neutral", 1), else_=0)).label(
+                    "neutral_count"
+                ),
+            )
+            .where(Review.region_code.isnot(None))
+            .group_by(Review.region_code, Review.region)
+            .order_by(desc("total_count"))
             .limit(limit)
+        )
 
         if filters:
             query = self._apply_filters(query, filters)
@@ -392,37 +386,62 @@ class ReviewAnalyticsRepository:
 
         regional_stats = []
         for row in result:
-            positive_rate = (row.positive_count / row.total_count * 100) if row.total_count > 0 else 0
-            negative_rate = (row.negative_count / row.total_count * 100) if row.total_count > 0 else 0
+            positive_rate = (
+                (row.positive_count / row.total_count * 100)
+                if row.total_count > 0
+                else 0
+            )
+            negative_rate = (
+                (row.negative_count / row.total_count * 100)
+                if row.total_count > 0
+                else 0
+            )
 
-            regional_stats.append({
-                'region_name': row.region,
-                'region_code': row.region_code,
-                'total_count': row.total_count,
-                'positive_count': row.positive_count,
-                'negative_count': row.negative_count,
-                'neutral_count': row.neutral_count,
-                'positive_rate': round(positive_rate, 2),
-                'negative_rate': round(negative_rate, 2),
-                'sentiment_score': round(
-                    (row.positive_count - row.negative_count) / row.total_count if row.total_count > 0 else 0, 3)
-            })
+            regional_stats.append(
+                {
+                    "region_name": row.region,
+                    "region_code": row.region_code,
+                    "total_count": row.total_count,
+                    "positive_count": row.positive_count,
+                    "negative_count": row.negative_count,
+                    "neutral_count": row.neutral_count,
+                    "positive_rate": round(positive_rate, 2),
+                    "negative_rate": round(negative_rate, 2),
+                    "sentiment_score": round(
+                        (
+                            (row.positive_count - row.negative_count) / row.total_count
+                            if row.total_count > 0
+                            else 0
+                        ),
+                        3,
+                    ),
+                }
+            )
 
         return regional_stats
 
-    async def get_city_stats(self, region_code: Optional[str] = None, limit: int = 15) -> List[Dict[str, Any]]:
+    async def get_city_stats(
+        self, region_code: Optional[str] = None, limit: int = 15
+    ) -> List[Dict[str, Any]]:
         """Топ городов по количеству отзывов"""
-        query = select(
-            Review.city,
-            Review.region,
-            Review.region_code,
-            func.count(Review.uuid).label('count'),
-            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_count'),
-            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_count')
-        ).where(Review.city.isnot(None)) \
-            .group_by(Review.city, Review.region, Review.region_code) \
-            .order_by(desc('count')) \
+        query = (
+            select(
+                Review.city,
+                Review.region,
+                Review.region_code,
+                func.count(Review.uuid).label("count"),
+                func.sum(case((Review.rating == "positive", 1), else_=0)).label(
+                    "positive_count"
+                ),
+                func.sum(case((Review.rating == "negative", 1), else_=0)).label(
+                    "negative_count"
+                ),
+            )
+            .where(Review.city.isnot(None))
+            .group_by(Review.city, Review.region, Review.region_code)
+            .order_by(desc("count"))
             .limit(limit)
+        )
 
         if region_code:
             query = query.where(Review.region_code == region_code)
@@ -430,34 +449,50 @@ class ReviewAnalyticsRepository:
         result = await self.session.execute(query)
         return [
             {
-                'city': row.city,
-                'region_name': row.region,
-                'region_code': row.region_code,
-                'count': row.count,
-                'positive_count': row.positive_count,
-                'negative_count': row.negative_count,
-                'sentiment_score': round((row.positive_count - row.negative_count) / row.count if row.count > 0 else 0,
-                                         3)
+                "city": row.city,
+                "region_name": row.region,
+                "region_code": row.region_code,
+                "count": row.count,
+                "positive_count": row.positive_count,
+                "negative_count": row.negative_count,
+                "sentiment_score": round(
+                    (
+                        (row.positive_count - row.negative_count) / row.count
+                        if row.count > 0
+                        else 0
+                    ),
+                    3,
+                ),
             }
             for row in result
         ]
 
     # ========== ВРЕМЕННАЯ АНАЛИТИКА ==========
 
-    async def get_daily_trends(self, days_back: int = 30, filters: Optional[ReviewFilters] = None) -> List[
-        Dict[str, Any]]:
+    async def get_daily_trends(
+        self, days_back: int = 30, filters: Optional[ReviewFilters] = None
+    ) -> List[Dict[str, Any]]:
         """Тренды по дням за последние N дней"""
         start_date = datetime.now() - timedelta(days=days_back)
 
-        query = select(
-            func.date(Review.datetime_review).label('date'),
-            func.count(Review.uuid).label('total'),
-            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive'),
-            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative'),
-            func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral')
-        ).where(Review.datetime_review >= start_date) \
-            .group_by(func.date(Review.datetime_review)) \
+        query = (
+            select(
+                func.date(Review.datetime_review).label("date"),
+                func.count(Review.uuid).label("total"),
+                func.sum(case((Review.rating == "positive", 1), else_=0)).label(
+                    "positive"
+                ),
+                func.sum(case((Review.rating == "negative", 1), else_=0)).label(
+                    "negative"
+                ),
+                func.sum(case((Review.rating == "neutral", 1), else_=0)).label(
+                    "neutral"
+                ),
+            )
+            .where(Review.datetime_review >= start_date)
+            .group_by(func.date(Review.datetime_review))
             .order_by(func.date(Review.datetime_review))
+        )
 
         if filters:
             query = self._apply_filters(query, filters)
@@ -465,25 +500,36 @@ class ReviewAnalyticsRepository:
         result = await self.session.execute(query)
         return [
             {
-                'date': row.date.isoformat(),
-                'total': row.total,
-                'positive': row.positive,
-                'negative': row.negative,
-                'neutral': row.neutral,
-                'sentiment_ratio': round((row.positive - row.negative) / row.total if row.total > 0 else 0, 3)
+                "date": row.date.isoformat(),
+                "total": row.total,
+                "positive": row.positive,
+                "negative": row.negative,
+                "neutral": row.neutral,
+                "sentiment_ratio": round(
+                    (row.positive - row.negative) / row.total if row.total > 0 else 0, 3
+                ),
             }
             for row in result
         ]
 
-    async def get_hourly_distribution(self, filters: Optional[ReviewFilters] = None) -> List[Dict[str, Any]]:
+    async def get_hourly_distribution(
+        self, filters: Optional[ReviewFilters] = None
+    ) -> List[Dict[str, Any]]:
         """Распределение отзывов по часам дня"""
-        query = select(
-            extract('hour', Review.datetime_review).label('hour'),
-            func.count(Review.uuid).label('count'),
-            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive'),
-            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative')
-        ).group_by(extract('hour', Review.datetime_review)) \
-            .order_by('hour')
+        query = (
+            select(
+                extract("hour", Review.datetime_review).label("hour"),
+                func.count(Review.uuid).label("count"),
+                func.sum(case((Review.rating == "positive", 1), else_=0)).label(
+                    "positive"
+                ),
+                func.sum(case((Review.rating == "negative", 1), else_=0)).label(
+                    "negative"
+                ),
+            )
+            .group_by(extract("hour", Review.datetime_review))
+            .order_by("hour")
+        )
 
         if filters:
             query = self._apply_filters(query, filters)
@@ -491,30 +537,42 @@ class ReviewAnalyticsRepository:
         result = await self.session.execute(query)
         return [
             {
-                'hour': int(row.hour),
-                'count': row.count,
-                'positive': row.positive,
-                'negative': row.negative,
-                'sentiment_score': round((row.positive - row.negative) / row.count if row.count > 0 else 0, 3)
+                "hour": int(row.hour),
+                "count": row.count,
+                "positive": row.positive,
+                "negative": row.negative,
+                "sentiment_score": round(
+                    (row.positive - row.negative) / row.count if row.count > 0 else 0, 3
+                ),
             }
             for row in result
         ]
 
     # ========== ПРОДУКТОВАЯ АНАЛИТИКА ==========
 
-    async def get_product_sentiment_analysis(self, limit: int = 10, filters: Optional[ReviewFilters] = None) -> List[
-        Dict[str, Any]]:
+    async def get_product_sentiment_analysis(
+        self, limit: int = 10, filters: Optional[ReviewFilters] = None
+    ) -> List[Dict[str, Any]]:
         """Анализ тональности по продуктам"""
-        query = select(
-            Review.product,
-            func.count(Review.uuid).label('total_reviews'),
-            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_count'),
-            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_count'),
-            func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral_count')
-        ).where(Review.product.isnot(None)) \
-            .group_by(Review.product) \
-            .order_by(desc('total_reviews')) \
+        query = (
+            select(
+                Review.product,
+                func.count(Review.uuid).label("total_reviews"),
+                func.sum(case((Review.rating == "positive", 1), else_=0)).label(
+                    "positive_count"
+                ),
+                func.sum(case((Review.rating == "negative", 1), else_=0)).label(
+                    "negative_count"
+                ),
+                func.sum(case((Review.rating == "neutral", 1), else_=0)).label(
+                    "neutral_count"
+                ),
+            )
+            .where(Review.product.isnot(None))
+            .group_by(Review.product)
+            .order_by(desc("total_reviews"))
             .limit(limit)
+        )
 
         if filters:
             query = self._apply_filters(query, filters)
@@ -526,32 +584,38 @@ class ReviewAnalyticsRepository:
             if row.total_reviews > 0:
                 positive_rate = row.positive_count / row.total_reviews * 100
                 negative_rate = row.negative_count / row.total_reviews * 100
-                sentiment_score = (row.positive_count - row.negative_count) / row.total_reviews
+                sentiment_score = (
+                    row.positive_count - row.negative_count
+                ) / row.total_reviews
             else:
                 positive_rate = negative_rate = sentiment_score = 0
 
-            products_analysis.append({
-                'product': row.product,
-                'total_reviews': row.total_reviews,
-                'positive_count': row.positive_count,
-                'negative_count': row.negative_count,
-                'neutral_count': row.neutral_count,
-                'positive_rate': round(positive_rate, 2),
-                'negative_rate': round(negative_rate, 2),
-                'sentiment_score': round(sentiment_score, 3)
-            })
+            products_analysis.append(
+                {
+                    "product": row.product,
+                    "total_reviews": row.total_reviews,
+                    "positive_count": row.positive_count,
+                    "negative_count": row.negative_count,
+                    "neutral_count": row.neutral_count,
+                    "positive_rate": round(positive_rate, 2),
+                    "negative_rate": round(negative_rate, 2),
+                    "sentiment_score": round(sentiment_score, 3),
+                }
+            )
 
         return products_analysis
 
     # ========== ДОПОЛНИТЕЛЬНАЯ АНАЛИТИКА ==========
 
-    async def get_text_length_stats(self, filters: Optional[ReviewFilters] = None) -> Dict[str, Any]:
+    async def get_text_length_stats(
+        self, filters: Optional[ReviewFilters] = None
+    ) -> Dict[str, Any]:
         """Статистика по длине текста отзывов"""
         query = select(
-            func.avg(func.length(Review.text)).label('avg_length'),
-            func.min(func.length(Review.text)).label('min_length'),
-            func.max(func.length(Review.text)).label('max_length'),
-            func.count(Review.uuid).label('total_reviews')
+            func.avg(func.length(Review.text)).label("avg_length"),
+            func.min(func.length(Review.text)).label("min_length"),
+            func.max(func.length(Review.text)).label("max_length"),
+            func.count(Review.uuid).label("total_reviews"),
         )
 
         if filters:
@@ -561,10 +625,10 @@ class ReviewAnalyticsRepository:
         row = result.first()
 
         return {
-            'average_length': round(row.avg_length or 0, 2),
-            'min_length': row.min_length or 0,
-            'max_length': row.max_length or 0,
-            'total_reviews': row.total_reviews or 0
+            "average_length": round(row.avg_length or 0, 2),
+            "min_length": row.min_length or 0,
+            "max_length": row.max_length or 0,
+            "total_reviews": row.total_reviews or 0,
         }
 
     async def get_weekly_comparison(self) -> Dict[str, Any]:
@@ -574,20 +638,20 @@ class ReviewAnalyticsRepository:
 
         # Текущая неделя
         current_week_query = select(
-            func.count(Review.uuid).label('total'),
-            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive'),
-            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative')
+            func.count(Review.uuid).label("total"),
+            func.sum(case((Review.rating == "positive", 1), else_=0)).label("positive"),
+            func.sum(case((Review.rating == "negative", 1), else_=0)).label("negative"),
         ).where(Review.created_at >= current_week_start)
 
         # Предыдущая неделя
         previous_week_query = select(
-            func.count(Review.uuid).label('total'),
-            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive'),
-            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative')
+            func.count(Review.uuid).label("total"),
+            func.sum(case((Review.rating == "positive", 1), else_=0)).label("positive"),
+            func.sum(case((Review.rating == "negative", 1), else_=0)).label("negative"),
         ).where(
             and_(
                 Review.created_at >= previous_week_start,
-                Review.created_at < current_week_start
+                Review.created_at < current_week_start,
             )
         )
 
@@ -598,31 +662,49 @@ class ReviewAnalyticsRepository:
         previous = previous_result.first()
 
         return {
-            'current_week': {
-                'total': current.total,
-                'positive': current.positive,
-                'negative': current.negative,
-                'positive_rate': round(current.positive / current.total * 100 if current.total > 0 else 0, 2)
+            "current_week": {
+                "total": current.total,
+                "positive": current.positive,
+                "negative": current.negative,
+                "positive_rate": round(
+                    current.positive / current.total * 100 if current.total > 0 else 0,
+                    2,
+                ),
             },
-            'previous_week': {
-                'total': previous.total,
-                'positive': previous.positive,
-                'negative': previous.negative,
-                'positive_rate': round(previous.positive / previous.total * 100 if previous.total > 0 else 0, 2)
+            "previous_week": {
+                "total": previous.total,
+                "positive": previous.positive,
+                "negative": previous.negative,
+                "positive_rate": round(
+                    (
+                        previous.positive / previous.total * 100
+                        if previous.total > 0
+                        else 0
+                    ),
+                    2,
+                ),
             },
-            'week_growth': round(((current.total - previous.total) / previous.total * 100) if previous.total > 0 else 0,
-                                 2)
+            "week_growth": round(
+                (
+                    ((current.total - previous.total) / previous.total * 100)
+                    if previous.total > 0
+                    else 0
+                ),
+                2,
+            ),
         }
 
     async def get_region_basic_info(self, region_code: str) -> Optional[Dict[str, Any]]:
         """Получить базовую информацию о регионе"""
-        query = select(
-            Review.region,
-            Review.region_code,
-            func.count(Review.uuid).label('total_reviews'),
-            func.count(func.distinct(Review.city)).label('unique_cities')
-        ).where(Review.region_code == region_code).group_by(
-            Review.region, Review.region_code
+        query = (
+            select(
+                Review.region,
+                Review.region_code,
+                func.count(Review.uuid).label("total_reviews"),
+                func.count(func.distinct(Review.city)).label("unique_cities"),
+            )
+            .where(Review.region_code == region_code)
+            .group_by(Review.region, Review.region_code)
         )
 
         result = await self.session.execute(query)
@@ -630,37 +712,30 @@ class ReviewAnalyticsRepository:
 
         if region_info:
             return {
-                'region_name': region_info.region,
-                'region_code': region_info.region_code,
-                'total_reviews': region_info.total_reviews,
-                'unique_cities': region_info.unique_cities
+                "region_name": region_info.region,
+                "region_code": region_info.region_code,
+                "total_reviews": region_info.total_reviews,
+                "unique_cities": region_info.unique_cities,
             }
         return None
 
     async def get_cities_by_region_query(
-            self,
-            region_code: Optional[str] = None,
-            min_reviews: int = 1,
-            limit: int = 100
+        self, region_code: Optional[str] = None, min_reviews: int = 1, limit: int = 100
     ) -> List[Dict[str, Any]]:
         """Получить города с фильтрацией по региону"""
-        query = select(
-            Review.city,
-            Review.region,
-            Review.region_code,
-            func.count(Review.uuid).label('reviews_count')
-        ).where(
-            Review.city.isnot(None)
-        ).group_by(
-            Review.city,
-            Review.region,
-            Review.region_code
-        ).having(
-            func.count(Review.uuid) >= min_reviews
-        ).order_by(
-            desc('reviews_count'),
-            Review.city
-        ).limit(limit)
+        query = (
+            select(
+                Review.city,
+                Review.region,
+                Review.region_code,
+                func.count(Review.uuid).label("reviews_count"),
+            )
+            .where(Review.city.isnot(None))
+            .group_by(Review.city, Review.region, Review.region_code)
+            .having(func.count(Review.uuid) >= min_reviews)
+            .order_by(desc("reviews_count"), Review.city)
+            .limit(limit)
+        )
 
         if region_code:
             query = query.where(Review.region_code == region_code)
@@ -669,37 +744,39 @@ class ReviewAnalyticsRepository:
 
         return [
             {
-                'city_name': row.city,
-                'region_name': row.region,
-                'region_code': row.region_code,
-                'reviews_count': row.reviews_count
+                "city_name": row.city,
+                "region_name": row.region,
+                "region_code": row.region_code,
+                "reviews_count": row.reviews_count,
             }
             for row in result
         ]
 
     # ========== SENTIMENT MAP METHODS ==========
 
-    async def get_regions_with_sentiment_colors(self, min_reviews: int = 0) -> List[Dict[str, Any]]:
+    async def get_regions_with_sentiment_colors(
+        self, min_reviews: int = 0
+    ) -> List[Dict[str, Any]]:
         """Получение регионов с sentiment анализом и цветами для карты"""
-        query = select(
-            Review.region,
-            Review.region_code,
-            func.count(Review.uuid).label('reviews_count'),
-            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_reviews'),
-            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_reviews'),
-            func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral_reviews')
-        ).where(
-            and_(
-                Review.region.isnot(None),
-                Review.region_code.isnot(None)
+        query = (
+            select(
+                Review.region,
+                Review.region_code,
+                func.count(Review.uuid).label("reviews_count"),
+                func.sum(case((Review.rating == "positive", 1), else_=0)).label(
+                    "positive_reviews"
+                ),
+                func.sum(case((Review.rating == "negative", 1), else_=0)).label(
+                    "negative_reviews"
+                ),
+                func.sum(case((Review.rating == "neutral", 1), else_=0)).label(
+                    "neutral_reviews"
+                ),
             )
-        ).group_by(
-            Review.region,
-            Review.region_code
-        ).having(
-            func.count(Review.uuid) >= min_reviews
-        ).order_by(
-            desc('reviews_count')
+            .where(and_(Review.region.isnot(None), Review.region_code.isnot(None)))
+            .group_by(Review.region, Review.region_code)
+            .having(func.count(Review.uuid) >= min_reviews)
+            .order_by(desc("reviews_count"))
         )
 
         result = await self.session.execute(query)
@@ -711,43 +788,50 @@ class ReviewAnalyticsRepository:
             negative_count = row.negative_reviews
             positive_percentage = (positive_count / total * 100) if total > 0 else 0
             negative_percentage = (negative_count / total * 100) if total > 0 else 0
-            sentiment_score = ((positive_count - negative_count) / total) if total > 0 else 0
+            sentiment_score = (
+                ((positive_count - negative_count) / total) if total > 0 else 0
+            )
 
-            all_data.append({
-                'row': row,
-                'total': total,
-                'positive_count': positive_count,
-                'negative_count': negative_count,
-                'positive_percentage': positive_percentage,
-                'negative_percentage': negative_percentage,
-                'sentiment_score': sentiment_score
-            })
-        all_scores = [item['sentiment_score'] for item in all_data]
+            all_data.append(
+                {
+                    "row": row,
+                    "total": total,
+                    "positive_count": positive_count,
+                    "negative_count": negative_count,
+                    "positive_percentage": positive_percentage,
+                    "negative_percentage": negative_percentage,
+                    "sentiment_score": sentiment_score,
+                }
+            )
+        all_scores = [item["sentiment_score"] for item in all_data]
 
         regions_with_colors = []
         for item in all_data:
             color, intensity = self._get_sentiment_color_scheme_relative(
-                item['sentiment_score'], all_scores
+                item["sentiment_score"], all_scores
             )
 
-            regions_with_colors.append({
-                'region_name': item['row'].region,
-                'region_code': item['row'].region_code,
-                'reviews_count': item['total'],
-                'positive_reviews': item['positive_count'],
-                'negative_reviews': item['negative_count'],
-                'neutral_reviews': item['row'].neutral_reviews,
-                'positive_percentage': round(item['positive_percentage'], 2),
-                'negative_percentage': round(item['negative_percentage'], 2),
-                'sentiment_score': round(item['sentiment_score'], 3),
-                'color': color,
-                'color_intensity': intensity
-            })
+            regions_with_colors.append(
+                {
+                    "region_name": item["row"].region,
+                    "region_code": item["row"].region_code,
+                    "reviews_count": item["total"],
+                    "positive_reviews": item["positive_count"],
+                    "negative_reviews": item["negative_count"],
+                    "neutral_reviews": item["row"].neutral_reviews,
+                    "positive_percentage": round(item["positive_percentage"], 2),
+                    "negative_percentage": round(item["negative_percentage"], 2),
+                    "sentiment_score": round(item["sentiment_score"], 3),
+                    "color": color,
+                    "color_intensity": intensity,
+                }
+            )
 
         return regions_with_colors
 
-    def _get_sentiment_color_scheme_relative(self, sentiment_score: float, all_scores: List[float]) -> tuple[
-        str, float]:
+    def _get_sentiment_color_scheme_relative(
+        self, sentiment_score: float, all_scores: List[float]
+    ) -> tuple[str, float]:
         """Определяет цвет относительно всех регионов"""
         GREEN = "#00B050"  # Лучшие регионы
         GOLD = "#FFC000"  # Средние регионы
@@ -779,16 +863,20 @@ class ReviewAnalyticsRepository:
         else:  # Нижние 20% - красный
             return SALMON, 0.8
 
-
     def _apply_filters(self, query, filters: ReviewFilters):
-        """Применение фильтров к запросу с учетом вашей модели"""
         if filters.rating:
             query = query.where(Review.rating == filters.rating.value)
         if filters.gender:
-            gender_map = {'М': 'male', 'Ж': 'female', '': 'unknown'}
+            gender_map = {"М": "male", "Ж": "female", "": "unknown"}
             db_gender = gender_map.get(filters.gender.value, filters.gender.value)
-            if db_gender == 'unknown':
-                query = query.where(or_(Review.gender == None, Review.gender == '', Review.gender == 'unknown'))
+            if db_gender == "unknown":
+                query = query.where(
+                    or_(
+                        Review.gender == None,
+                        Review.gender == "",
+                        Review.gender == "unknown",
+                    )
+                )
             else:
                 query = query.where(Review.gender == db_gender)
 

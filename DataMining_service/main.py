@@ -4,11 +4,12 @@ from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from DataMining_service.models.review import Review
 from core.config import configs
 from core.broker import KafkaBrokerManager
 from core.database import get_async_session
 from repository import ReviewRepository
-from shemas.review import ReviewResponse, ReviewPredict, PredictionOutput
+from shemas.review import ReviewResponse
 from ReviewService import ReviewService
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -24,13 +25,14 @@ async def lifespan(app: FastAPI):
     if scheduler is None:
         scheduler = AsyncIOScheduler()
         from auto_parser.ParserService import get_and_publish_reviews
+
         scheduler.add_job(
             get_and_publish_reviews,
             "interval",
             minutes=3,
             id="review_parser",
             replace_existing=True,
-            max_instances=1
+            max_instances=1,
         )
 
         try:
@@ -48,10 +50,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Pulse Review API",
+    title=configs.PROJECT_NAME,
     description="API для приема и обработки клиентских отзывов",
-    version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -65,7 +66,7 @@ app.add_middleware(
 
 def get_review_service(
     session: AsyncSession = Depends(get_async_session),
-    broker: KafkaBrokerManager = Depends(lambda: kafka_broker)
+    broker: KafkaBrokerManager = Depends(lambda: kafka_broker),
 ) -> ReviewService:
     repo = ReviewRepository(session)
     return ReviewService(broker, repo)
@@ -73,34 +74,24 @@ def get_review_service(
 
 # Маршруты
 @app.post(
-    "/predict",
-    response_model=PredictionOutput,
+    "/publish-review",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Обработать новые отзывы",
-    description="Принимает отзыв, публикует в Kafka и сохраняет в БД"
+    summary="Опубликовать новый отзыв",
+    description="Принимает отзыв, публикует в Kafka и сохраняет в БД",
 )
-async def predict_reviews(
-    review: ReviewPredict,
-    service: ReviewService = Depends(get_review_service)
-) -> ReviewResponse:
+async def publish_review(
+    review: Review, service: ReviewService = Depends(get_review_service)
+):
     try:
         return await service.create_review(review)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ошибка при создании отзыва: {str(e)}"
+            detail=f"Ошибка при создании отзыва: {str(e)}",
         )
-
-
-@app.get("/")
-async def root():
-    return {
-        "name": "Pulse Review API",
-        "version": "1.0.0",
-        "endpoints": {"predict reviews": "/predict"}
-    }
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("main:app", host=configs.HOST, port=configs.PORT, reload=True)

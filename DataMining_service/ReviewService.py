@@ -23,8 +23,8 @@ class ReviewService:
         await self._publish_to_kafka(review_id, review, datetime_review)
 
         # Подготавливаем данные для БД
-        review_dict = review.model_dump(exclude={'uuid'})
-        review_dict['datetime_review'] = datetime_review
+        review_dict = review.model_dump(exclude={"uuid"})
+        review_dict["datetime_review"] = datetime_review
 
         # Создаем отзыв в БД
         db_review = await self.repo.add_review(**review_dict)
@@ -32,7 +32,9 @@ class ReviewService:
         # Формируем ответ
         return self._build_response(db_review)
 
-    async def _publish_to_kafka(self, review_id: str, review: ReviewCreate, datetime_review: datetime):
+    async def _publish_to_kafka(
+        self, review_id: str, review: ReviewCreate, datetime_review: datetime
+    ):
         """Публикация отзыва в Kafka."""
         message = {
             "id": review_id,
@@ -44,13 +46,13 @@ class ReviewService:
             "gender": review.gender.value if review.gender else None,
             "city": review.city,
             "region_code": review.region_code,
-            "datetime_review": review.datetime_review.isoformat() if review.datetime_review else None
+            "datetime_review": (
+                review.datetime_review.isoformat() if review.datetime_review else None
+            ),
         }
 
         await self.broker.publish(
-            topic="raw_reviews",
-            message=message,
-            key=review_id.encode('utf-8')
+            topic="raw_reviews", message=message, key=review_id.encode("utf-8")
         )
 
     def _build_response(self, db_review) -> ReviewResponse:
@@ -59,7 +61,11 @@ class ReviewService:
         rating = None
         if db_review.rating:
             try:
-                rating = SentimentType(db_review.rating.value if hasattr(db_review.rating, 'value') else db_review.rating)
+                rating = SentimentType(
+                    db_review.rating.value
+                    if hasattr(db_review.rating, "value")
+                    else db_review.rating
+                )
             except (ValueError, AttributeError):
                 rating = None
 
@@ -67,7 +73,12 @@ class ReviewService:
         if db_review.gender:
             try:
                 from shemas.review import Gender
-                gender = Gender(db_review.gender.value if hasattr(db_review.gender, 'value') else db_review.gender)
+
+                gender = Gender(
+                    db_review.gender.value
+                    if hasattr(db_review.gender, "value")
+                    else db_review.gender
+                )
             except (ValueError, AttributeError):
                 gender = None
 
@@ -81,7 +92,7 @@ class ReviewService:
             city=db_review.city,
             region_code=db_review.region_code,
             datetime_review=db_review.datetime_review,
-            created_at=db_review.created_at
+            created_at=db_review.created_at,
         )
 
     async def get_review_by_id(self, review_id: str) -> Optional[ReviewResponse]:
@@ -91,19 +102,21 @@ class ReviewService:
             return self._build_response(db_review)
         return None
 
-    async def get_reviews(self,
-                         limit: int = 10,
-                         offset: int = 0,
-                         source: Optional[str] = None,
-                         city: Optional[str] = None,
-                         region_code: Optional[str] = None) -> list[ReviewResponse]:
+    async def get_reviews(
+        self,
+        limit: int = 10,
+        offset: int = 0,
+        source: Optional[str] = None,
+        city: Optional[str] = None,
+        region_code: Optional[str] = None,
+    ) -> list[ReviewResponse]:
         """Получить список отзывов с фильтрацией."""
         db_reviews = await self.repo.get_reviews(
             limit=limit,
             offset=offset,
             source=source,
             city=city,
-            region_code=region_code
+            region_code=region_code,
         )
         return [self._build_response(review) for review in db_reviews]
 
@@ -121,12 +134,11 @@ class ReviewService:
     #         return self._build_response(db_review)
     #     return None
 
-    async def get_reviews_by_region(self, region_code: str, limit: int = 10) -> list[ReviewResponse]:
+    async def get_reviews_by_region(
+        self, region_code: str, limit: int = 10
+    ) -> list[ReviewResponse]:
         """Получить отзывы по коду региона."""
-        db_reviews = await self.repo.get_reviews(
-            limit=limit,
-            region_code=region_code
-        )
+        db_reviews = await self.repo.get_reviews(limit=limit, region_code=region_code)
         return [self._build_response(review) for review in db_reviews]
 
     async def get_stats_by_region(self) -> dict:

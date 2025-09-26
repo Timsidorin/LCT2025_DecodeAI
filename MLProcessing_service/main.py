@@ -16,7 +16,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-#kafka_broker = KafkaBrokerManager()
+# kafka_broker = KafkaBrokerManager()
 scheduler = None
 
 auth_service = AuthService()
@@ -26,20 +26,17 @@ security = HTTPBearer()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global scheduler
-    #await kafka_broker.connect()
+    # await kafka_broker.connect()
     logger.info("Kafka брокер подключен")
 
     try:
         yield
     finally:
-        #await kafka_broker.close()
+        # await kafka_broker.close()
         logger.info("Kafka брокер отключен")
 
 
-app = FastAPI(
-    title=configs.PROJECT_NAME,
-    lifespan=lifespan
-)
+app = FastAPI(title=configs.PROJECT_NAME, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -58,8 +55,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
 # Защищенный endpoint для анализа отзывов
 @app.post("/predict", response_model=PredictResponse)
 async def predict_sentiment_and_topics(
-        request: PredictRequest,
-        current_user: dict = Depends(verify_token)
+    request: PredictRequest, current_user: dict = Depends(verify_token)
 ):
     """
     Защищенный endpoint для анализа тональности и выделения тем из отзывов
@@ -73,15 +69,17 @@ async def predict_sentiment_and_topics(
     """
     pass
 
+
 # Тестовый endpoint для проверки аутентификации
 @app.get("/test-auth")
 async def test_auth(current_user: dict = Depends(verify_token)):
     """Тестовый endpoint для проверки аутентификации"""
     return {
         "message": "Аутентификация успешна",
-        "user": current_user.get('username', 'unknown'),
-        "service": "ML Processing Service"
+        "user": current_user.get("username", "unknown"),
+        "service": "ML Processing Service",
     }
+
 
 if __name__ == "__main__":
     import uvicorn

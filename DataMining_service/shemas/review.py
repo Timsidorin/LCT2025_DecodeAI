@@ -7,12 +7,12 @@ from uuid import UUID
 class ReviewCreate(BaseModel):
     source: str = Field(default="API", description="Источник отзыва")
     text: str = Field(..., min_length=1, description="Текст отзыва")
-    rating: Optional[str] = Field(None, description="Тональность отзыва")
-    product: Optional[str] = Field(None, description="Название продукта")
     gender: Optional[str] = Field(None, description="Пол написавшего")
     city: Optional[str] = Field(None, description="Город")
     region_code: Optional[str] = Field(None, description="Код региона")
-    datetime_review: Optional[datetime] = Field(None, description="Дата и время создания отзыва")
+    datetime_review: Optional[datetime] = Field(
+        None, description="Дата и время создания отзыва"
+    )
 
 
 class ReviewResponse(BaseModel):
@@ -29,8 +29,6 @@ class ReviewResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
 
 
 class ReviewUpdate(BaseModel):

@@ -34,9 +34,10 @@ class NotificationPayload(BaseModel):
 @app.post("/send-notification")
 async def send_notification_endpoint(payload: NotificationPayload):
 
-        return {"ok": True, "message": "Уведомление отправлено."}
+    return {"ok": True, "message": "Уведомление отправлено."}
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host=configs.HOST, port=configs.PORT)
