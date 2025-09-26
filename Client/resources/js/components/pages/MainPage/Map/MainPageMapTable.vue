@@ -4,7 +4,7 @@
         :columns="columns"
         row-key="id"
         virtual-scroll
-        style="height: 300px"
+        style="height: 300px; border-radius: 10px"
     >
         <template v-slot:body="props">
             <q-tr :props="props">

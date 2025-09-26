@@ -5,10 +5,11 @@ export class MapApi extends BaseApi{
         super(__BASE__PYTHON__URL__);
     }
 
-    async coloringMap() {
+    async coloringMap(type) {
         try {
             super.httpMethod = 'get';
-            super.sourceUrl = '/api/dashboard/regions/sentiment-heatmap?sentiment_filter=neutral&min_reviews=0';
+            super.sourceUrl = '/api/dashboard/regions/sentiment-heatmap?min_reviews=0';
+            super.params = {sentiment_filter: type}
             return super.createRequest();
         } catch (e) {
             return e;
