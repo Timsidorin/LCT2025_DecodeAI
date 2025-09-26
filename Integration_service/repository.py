@@ -131,8 +131,6 @@ class ReviewAnalyticsRepository:
             else:
                 intensity = 0.2
 
-        # Применяем интенсивность к RGB цвету
-        # Чем меньше intensity, тем светлее цвет (ближе к белому)
         r = int(base_rgb[0] * intensity + 255 * (1 - intensity))
         g = int(base_rgb[1] * intensity + 255 * (1 - intensity))
         b = int(base_rgb[2] * intensity + 255 * (1 - intensity))
@@ -781,7 +779,6 @@ class ReviewAnalyticsRepository:
 
 
     def _apply_filters(self, query, filters: ReviewFilters):
-        """Применение фильтров к запросу с учетом вашей модели"""
         if filters.rating:
             query = query.where(Review.rating == filters.rating.value)
         if filters.gender:
@@ -818,6 +815,19 @@ class ReviewAnalyticsRepository:
             query = query.where(Review.region_code.in_(filters.region_codes))
 
         return query
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     async def close(self):
         await self.session.close()

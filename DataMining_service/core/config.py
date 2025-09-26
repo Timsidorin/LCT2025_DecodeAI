@@ -5,6 +5,9 @@ import os
 
 
 class Configs(BaseSettings):
+
+    PROJECT_NAME: str = "Модуль сбора отзывов"
+
     # ------------ Веб-сервер ------------
     HOST: str = "localhost"
     PORT: int = 8004

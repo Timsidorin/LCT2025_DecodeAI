@@ -4,11 +4,12 @@ from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from DataMining_service.models.review import Review
 from core.config import configs
 from core.broker import KafkaBrokerManager
 from core.database import get_async_session
 from repository import ReviewRepository
-from shemas.review import ReviewResponse, ReviewPredict, PredictionOutput
+from shemas.review import ReviewResponse
 from ReviewService import ReviewService
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -48,9 +49,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Pulse Review API",
+    title=configs.PROJECT_NAME,
     description="API для приема и обработки клиентских отзывов",
-    version="1.0.0",
     lifespan=lifespan
 )
 
@@ -73,16 +73,15 @@ def get_review_service(
 
 # Маршруты
 @app.post(
-    "/predict",
-    response_model=PredictionOutput,
+    "/publish-review",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Обработать новые отзывы",
+    summary="Опубликовать новый отзыв",
     description="Принимает отзыв, публикует в Kafka и сохраняет в БД"
 )
-async def predict_reviews(
-    review: ReviewPredict,
+async def publish_review(
+    review: Review,
     service: ReviewService = Depends(get_review_service)
-) -> ReviewResponse:
+):
     try:
         return await service.create_review(review)
     except Exception as e:
@@ -90,15 +89,6 @@ async def predict_reviews(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при создании отзыва: {str(e)}"
         )
-
-
-@app.get("/")
-async def root():
-    return {
-        "name": "Pulse Review API",
-        "version": "1.0.0",
-        "endpoints": {"predict reviews": "/predict"}
-    }
 
 
 if __name__ == "__main__":

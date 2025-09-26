@@ -250,6 +250,8 @@ async def get_regions_stats(
         raise HTTPException(status_code=500, detail=f"Ошибка получения статистики регионов: {str(e)}")
 
 
+
+
 @router.get("/stats/cities", summary="Статистика по городам")
 async def get_cities_stats(
         region_code: Optional[str] = Query(None, description="Код региона"),
