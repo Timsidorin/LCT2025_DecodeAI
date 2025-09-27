@@ -11,7 +11,7 @@ class Configs(BaseSettings):
 
     PROJECT_NAME: str = "Модуль уведомлений"
     TOKEN_INFO_BOT: Optional[str] = Field(
-        default="7882621367:AAFfSLtNXaMNjfaqz_OBzpB3NXKe5qcQR2M", env="TOKEN_INFO_BOT"
+        default="8257704999:AAE9AxmFWLKX5nNAqTv0vusk8s3bxnlsieo", env="TOKEN_INFO_BOT"
     )
 
     model_config = SettingsConfigDict(

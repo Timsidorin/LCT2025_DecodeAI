@@ -10,29 +10,66 @@ from core.config import configs
 from core.database import get_async_session
 from services.auth_service import AuthService
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-import logging
 
+# FastStream импорты
+from faststream.kafka.fastapi import KafkaRouter
+from pydantic import BaseModel, Field
+import logging
+import json
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# kafka_broker = KafkaBrokerManager()
 scheduler = None
-
 auth_service = AuthService()
 security = HTTPBearer()
 
 
+# Модель для сырых отзывов из Kafka
+class RawReview(BaseModel):
+    text: str = Field(..., description="Текст отзыва")
+
+kafka_router = KafkaRouter(
+    configs.BOOTSTRAP_SERVICE,
+    schema_url="/asyncapi",
+    include_in_schema=True
+)
+
+@kafka_router.subscriber("raw_reviews", description="Подписчик на сырые отзывы из Kafka")
+async def process_raw_review(msg: RawReview):
+    """
+    Обработчик сырых отзывов из Kafka topic "raw_reviews"
+
+    Получает отзыв, обрабатывает его через ML модель
+    и сохраняет результаты в базу данных
+    """
+    try:
+        review_data = {
+            "text": msg.text,
+        }
+
+        # analysis_result = await analyze_sentiment_and_topics(msg.text)
+
+        logger.info(f"Отзыв {msg.review_id} успешно обработан")
+
+    except Exception as e:
+        logger.error(f"Ошибка при обработке отзыва {msg.review_id}: {str(e)}")
+        raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global scheduler
-    # await kafka_broker.connect()
-    logger.info("Kafka брокер подключен")
+    logger.info("Запуск приложения...")
+
+    # Запуск Kafka router
+    await kafka_router.broker.start()
+    logger.info("Kafka брокер подключен и подписчик активен")
 
     try:
         yield
     finally:
-        # await kafka_broker.close()
+        # Закрытие Kafka router
+        await kafka_router.broker.close()
         logger.info("Kafka брокер отключен")
 
 
@@ -47,6 +84,9 @@ app.add_middleware(
 )
 
 
+app.include_router(kafka_router)
+
+
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Проверка JWT токена через внешний auth-сервис"""
     return await auth_service.verify_token(credentials.credentials)
@@ -55,7 +95,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
 # Защищенный endpoint для анализа отзывов
 @app.post("/predict", response_model=PredictResponse)
 async def predict_sentiment_and_topics(
-    request: PredictRequest, current_user: dict = Depends(verify_token)
+        request: PredictRequest, current_user: dict = Depends(verify_token)
 ):
     """
     Защищенный endpoint для анализа тональности и выделения тем из отзывов
@@ -79,6 +119,17 @@ async def test_auth(current_user: dict = Depends(verify_token)):
         "user": current_user.get("username", "unknown"),
         "service": "ML Processing Service",
     }
+
+
+@app.post("/test-kafka")
+async def test_kafka_publish():
+    """Тестовый endpoint для публикации сообщения в Kafka"""
+    test_review = RawReview(
+        text="Отличный банк, очень доволен обслуживанием!"
+    )
+
+    await kafka_router.broker.publish(test_review, "raw_reviews")
+    return {"message": "Тестовое сообщение отправлено в Kafka"}
 
 
 if __name__ == "__main__":

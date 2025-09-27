@@ -102,18 +102,60 @@ class ReviewFilters(BaseModel):
     region_codes: Optional[List[str]] = Field(None, description="Список кодов регионов")
 
     @field_validator("date_to")
-    def validate_date_range(cls, v, values):
-        if v and "date_from" in values and values["date_from"]:
-            if v < values["date_from"]:
+    def validate_date_range(cls, v, info):
+        if v and info.data.get("date_from"):
+            if v < info.data["date_from"]:
                 raise ValueError("date_to должна быть больше date_from")
         return v
 
     @field_validator("created_to")
-    def validate_created_range(cls, v, values):
-        if v and "created_from" in values and values["created_from"]:
-            if v < values["created_from"]:
+    def validate_created_range(cls, v, info):
+        if v and info.data.get("created_from"):
+            if v < info.data["created_from"]:
                 raise ValueError("created_to должна быть больше created_from")
         return v
+
+
+class SourceAnalyticsFilters(BaseModel):
+    """Фильтры для анализа статистики по источникам отзывов"""
+
+
+    date_from: Optional[datetime] = Field(None, description="Дата начала периода анализа")
+    date_to: Optional[datetime] = Field(None, description="Дата окончания периода анализа")
+    region_code: Optional[str] = Field(None, description="Код региона для анализа")
+
+    # Дополнительные фильтры
+    city: Optional[str] = Field(None, description="Город для дополнительной фильтрации")
+    product: Optional[str] = Field(None, description="Продукт для фильтрации")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "date_from": "2024-01-01T00:00:00",
+                "date_to": "2024-12-31T23:59:59",
+                "region_code": "MSK",
+                "city": "Москва",
+                "product": "Кредитная карта",
+                "min_reviews": 10
+            }
+        }
+
+    @field_validator("date_to")
+    def validate_date_range(cls, v, info):
+        if v and info.data.get("date_from"):
+            if v < info.data["date_from"]:
+                raise ValueError("date_to должна быть больше date_from")
+        return v
+
+    def to_review_filters(self) -> ReviewFilters:
+        """Конвертировать в стандартный ReviewFilters для совместимости"""
+        return ReviewFilters(
+            region_code=self.region_code,
+            city=self.city,
+            product=self.product,
+            date_from=self.date_from,
+            date_to=self.date_to
+        )
 
 
 # ========== ПАГИНАЦИЯ ==========
@@ -230,3 +272,121 @@ class RealTimeMetrics(BaseModel):
     recent_reviews: List[Dict[str, Any]] = Field(..., description="Недавние отзывы")
     current_timestamp: datetime = Field(..., description="Текущее время")
     period_minutes: int = Field(..., description="Период в минутах")
+
+
+# ========== ИСТОЧНИКИ ОТЗЫВОВ ==========
+
+
+class SourceStatistics(BaseModel):
+    """Статистика по одному источнику"""
+
+    source: str = Field(..., description="Название источника")
+    total_reviews: int = Field(..., description="Общее количество отзывов")
+    positive_reviews: int = Field(..., description="Количество положительных отзывов")
+    negative_reviews: int = Field(..., description="Количество отрицательных отзывов")
+    neutral_reviews: int = Field(..., description="Количество нейтральных отзывов")
+    positive_percentage: float = Field(..., description="Процент положительных отзывов")
+    negative_percentage: float = Field(..., description="Процент отрицательных отзывов")
+    neutral_percentage: float = Field(..., description="Процент нейтральных отзывов")
+    sentiment_score: float = Field(..., description="Общий sentiment score от -1 до 1")
+    quality_rating: str = Field(..., description="Оценка качества источника")
+    dominance_rank: str = Field(..., description="Доминирующий тип отзывов")
+    filtered_by_region: str = Field(..., description="Регион фильтрации")
+    filtered_by_date_range: str = Field(..., description="Период фильтрации")
+    period_days: int = Field(..., description="Количество дней в периоде")
+
+
+class SourceAnalyticsSummary(BaseModel):
+    """Сводка по анализу источников"""
+
+    region_code: str = Field(..., description="Код региона")
+    period_from: str = Field(..., description="Начало периода")
+    period_to: str = Field(..., description="Конец периода")
+    period_days: int = Field(..., description="Длительность периода в днях")
+    total_sources: int = Field(..., description="Общее количество источников")
+    total_reviews: int = Field(..., description="Общее количество отзывов")
+    overall_positive_percentage: float = Field(..., description="Общий процент позитивных отзывов")
+    overall_negative_percentage: float = Field(..., description="Общий процент негативных отзывов")
+    overall_neutral_percentage: float = Field(..., description="Общий процент нейтральных отзывов")
+    overall_sentiment_score: float = Field(..., description="Общий sentiment score")
+    additional_filters: Dict[str, Any] = Field(..., description="Дополнительные примененные фильтры")
+    period_analysis: Dict[str, Any] = Field(..., description="Анализ по периоду")
+
+
+class SourceAnalyticsResponse(BaseModel):
+    """Полный ответ анализа источников"""
+
+    sources: List[SourceStatistics] = Field(..., description="Статистика по каждому источнику")
+    summary: SourceAnalyticsSummary = Field(..., description="Общая сводка")
+    analytics: Dict[str, Any] = Field(..., description="Дополнительная аналитика")
+    filters_applied: Dict[str, Any] = Field(..., description="Примененные фильтры")
+    timestamp: str = Field(..., description="Время генерации отчета")
+
+
+# ========== РЕГИОНАЛЬНАЯ СТАТИСТИКА ПО ПРОДУКТАМ ==========
+
+
+class RegionProductStatistics(BaseModel):
+    """Статистика по региону и продукту"""
+    region: str = Field(..., description="Название региона")
+    region_code: str = Field(..., description="Код региона")
+    product: str = Field(..., description="Название продукта")
+    total_reviews: int = Field(..., description="Общее количество отзывов")
+    positive_reviews: int = Field(..., description="Количество положительных отзывов")
+    negative_reviews: int = Field(..., description="Количество отрицательных отзывов")
+    neutral_reviews: int = Field(..., description="Количество нейтральных отзывов")
+    positive_percentage: float = Field(..., description="Процент положительных отзывов")
+    negative_percentage: float = Field(..., description="Процент отрицательных отзывов")
+    neutral_percentage: float = Field(..., description="Процент нейтральных отзывов")
+
+
+class RegionProductSummary(BaseModel):
+    """Сводка по региональной статистике продуктов"""
+
+    total_region_product_combinations: int = Field(..., description="Общее количество комбинаций регион-продукт")
+    total_reviews: int = Field(..., description="Общее количество отзывов")
+    unique_regions: int = Field(..., description="Количество уникальных регионов")
+    unique_products: int = Field(..., description="Количество уникальных продуктов")
+    overall_positive_percentage: float = Field(..., description="Общий процент позитивных отзывов")
+    overall_negative_percentage: float = Field(..., description="Общий процент негативных отзывов")
+    overall_neutral_percentage: float = Field(..., description="Общий процент нейтральных отзывов")
+    overall_sentiment_score: float = Field(..., description="Общий sentiment score")
+    min_reviews_threshold: int = Field(..., description="Минимальный порог отзывов")
+
+
+class RegionProductAnalyticsResponse(BaseModel):
+    """Полный ответ региональной аналитики по продуктам"""
+    regions_products: List[RegionProductStatistics] = Field(..., description="Статистика по комбинациям регион-продукт")
+
+
+# ========== ТЕПЛОВАЯ КАРТА SENTIMENT ==========
+
+
+class SentimentType(str, Enum):
+    """Типы sentiment для тепловой карты"""
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+    NEUTRAL = "neutral"
+
+
+class RegionSentimentHeatmap(BaseModel):
+    """Данные региона для тепловой карты sentiment"""
+
+    region_name: str = Field(..., description="Название региона")
+    region_code: str = Field(..., description="Код региона")
+    total_reviews: int = Field(..., description="Общее количество отзывов")
+    target_sentiment_count: int = Field(..., description="Количество отзывов целевого типа")
+    target_sentiment_percentage: float = Field(..., description="Процент отзывов целевого типа")
+    positive_reviews: int = Field(..., description="Количество положительных отзывов")
+    negative_reviews: int = Field(..., description="Количество отрицательных отзывов")
+    neutral_reviews: int = Field(..., description="Количество нейтральных отзывов")
+    color: str = Field(..., description="RGB цвет в формате (r g b)")
+    sentiment_filter: str = Field(..., description="Примененный фильтр sentiment")
+
+
+class SentimentHeatmapResponse(BaseModel):
+    """Ответ для тепловой карты sentiment"""
+    regions: List[RegionSentimentHeatmap] = Field(..., description="Данные регионов")
+    total_regions: int = Field(..., description="Общее количество регионов")
+    sentiment_filter: SentimentType = Field(..., description="Тип sentiment фильтра")
+    color_scheme: Dict[str, str] = Field(..., description="Информация о цветовой схеме")
