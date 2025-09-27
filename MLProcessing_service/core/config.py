@@ -21,6 +21,10 @@ class Configs(BaseSettings):
         default="http://localhost:8005", env="AUTH_SERVICE_URL"
     )
 
+    BOOTSTRAP_SERVICE: Optional[str] = Field(
+        default="localhost:9092", env="BOOTSTRAP_SERVICE"
+    )
+
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
     )

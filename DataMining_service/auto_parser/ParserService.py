@@ -1,10 +1,10 @@
 import asyncio
 from ReviewParser import ReviewMonitor as RM
-from shemas.review import ReviewCreate
-from core.database import get_async_session
-from core.broker import KafkaBrokerManager
-from repository import ReviewRepository
-from ReviewService import ReviewService
+from DataMining_service.shemas.review import ReviewCreate
+from DataMining_service.core.database import get_async_session
+from DataMining_service.core.broker import KafkaBrokerManager
+from DataMining_service.repository import ReviewRepository
+from DataMining_service.ReviewService import ReviewService
 
 parser = RM()
 

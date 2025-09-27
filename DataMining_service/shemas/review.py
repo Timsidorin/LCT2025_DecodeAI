@@ -5,9 +5,7 @@ from uuid import UUID
 
 
 class ReviewCreate(BaseModel):
-    source: str = Field(default="API", description="Источник отзыва")
     text: str = Field(..., min_length=1, description="Текст отзыва")
-    gender: Optional[str] = Field(None, description="Пол написавшего")
     city: Optional[str] = Field(None, description="Город")
     region_code: Optional[str] = Field(None, description="Код региона")
     datetime_review: Optional[datetime] = Field(
