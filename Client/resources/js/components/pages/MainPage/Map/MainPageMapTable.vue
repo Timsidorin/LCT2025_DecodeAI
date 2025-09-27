@@ -1,6 +1,8 @@
 <template>
+    <div v-if="loading">Загрузка...</div>
     <q-table
-        :rows="rows"
+        v-else-if="row.length > 0"
+        :rows="row"
         :columns="columns"
         row-key="id"
         virtual-scroll
@@ -8,94 +10,60 @@
     >
         <template v-slot:body="props">
             <q-tr :props="props">
-                <q-td key="name" :props="props">
-                    {{ props.row.name }}
+                <q-td key="product" :props="props">
+                    {{ props.row.product }}
                 </q-td>
-                <q-td key="positive" :props="props">
-                    {{ props.row.positive }}
+                <q-td key="positive_reviews" :props="props">
+                    {{ props.row.positive_reviews }}
                 </q-td>
-                <q-td key="neutral" :props="props">
-                    {{ props.row.neutral }}
+                <q-td key="neutral_reviews" :props="props">
+                    {{ props.row.neutral_reviews }}
                 </q-td>
-                <q-td key="negative" :props="props">
-                    {{ props.row.negative }}
+                <q-td key="negative_reviews" :props="props">
+                    {{ props.row.negative_reviews }}
                 </q-td>
             </q-tr>
         </template>
     </q-table>
 </template>
 
-<script>
-import {ref} from 'vue';
+<script setup>
+import {useSelectDateStore} from "../../../../store/MapSelectDate.js";
+import {onMounted, ref} from "vue";
+import {StatisticApi} from "../../../../providers/StatisticApi.js";
+import {useRegionStore} from "../../../../store/MapSelectRegion.js";
+import {useWatchRegion, useWatchStartDate, useWatchEndDate} from "../../../../composables/watchChangesMapPage.js";
+
+const storeDate = useSelectDateStore();
+const api = new StatisticApi();
+const row = ref([]);
+const loading = ref(true);
+const storeRegion = useRegionStore();
+
 const columns = [
-    {name: 'name', field: 'name', align: 'center', label: 'Продукт', sortable: true,},
-    {name: 'positive', field: 'positive', align: 'center', label: 'Положительно', sortable: true},
-    {name: 'neutral', field: 'neutral', align: 'center', label: 'Нейтрально', sortable: true},
-    {name: 'negative', field: 'negative', align: 'center', label: 'Отрицательно', sortable: true},
+    {name: 'product', field: 'product', align: 'center', label: 'Продукт', sortable: true,},
+    {name: 'positive_reviews', field: 'positive_reviews', align: 'center', label: 'Положительно', sortable: true},
+    {name: 'neutral_reviews', field: 'neutral_reviews', align: 'center', label: 'Нейтрально', sortable: true},
+    {name: 'negative_reviews', field: 'negative_reviews', align: 'center', label: 'Отрицательно', sortable: true},
 ];
 
-const rows = [
-    {
-        name: 'Кредитные карты',
-        positive: 15,
-        neutral: 3,
-        negative: 2,
-        id: 1
-    },
-    {
-        name: 'Дебетовые карты',
-        positive: 12,
-        neutral: 5,
-        negative: 1,
-        id: 2
-    },
-    {
-        name: 'Кредит',
-        positive: 8,
-        neutral: 4,
-        negative: 3,
-        id: 3
-    },
-    {
-        name: 'Ипотека',
-        positive: 6,
-        neutral: 7,
-        negative: 4,
-        id: 4
-    },
-    {
-        name: 'Кредитные карты',
-        positive: 15,
-        neutral: 3,
-        negative: 2,
-        id: 5
-    },
-    {
-        name: 'Дебетовые карты',
-        positive: 12,
-        neutral: 5,
-        negative: 1,
-        id: 6
-    },
-    {
-        name: 'Кредит',
-        positive: 8,
-        neutral: 4,
-        negative: 3,
-        id: 7
-    }
-];
-const startDate = ref('01.01.2024');
-const endDate = ref('23.09.2025');
-
-export default {
-    setup() {
-        return {
-            columns,
-            rows,
-            startDate,
-            endDate
-        }
+async function getDataTable() {
+    loading.value = true;
+    row.value = [];
+    try {
+        let result = await api.getTableStatistic(storeDate.startDate, storeDate.endDate, storeRegion.region?.value);
+        row.value = result.data.regions_products;
+        loading.value = false;
+    } catch (e) {
+        return e;
     }
 }
+//TODO: ПОЧЕМУ СТРОКА НЕПРАВИЛЬНО ПАРСИТСЯ ПРИ ПЕРЕДАЧИ ДАТЫ
+useWatchRegion(storeRegion, getDataTable);
+useWatchStartDate(storeDate, getDataTable);
+useWatchEndDate(storeDate, getDataTable);
+
+onMounted(async () => {
+    await getDataTable();
+});
 </script>

@@ -3,7 +3,7 @@
         <div class="col-7">
             <main-page-map-russia />
         </div>
-        <div class="q-ml-auto q-mr-xl column">
+        <div class="q-ml-xl column" style="width: 100%; max-width: 620px">
             <main-page-map-date-picker class="q-mb-md"/>
             <main-page-map-table class="q-mb-md"/>
             <graph-source/>

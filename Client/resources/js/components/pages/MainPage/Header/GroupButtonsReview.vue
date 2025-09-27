@@ -1,5 +1,6 @@
 <template>
-    <div class="row items-center">
+    <hr/>
+    <div class="row items-center q-ml-xl q-pa-md">
         <div class="col-auto row q-col-gutter-md">
             <div class="col-auto">
                 <span class="text-subtitle1">Регион</span>

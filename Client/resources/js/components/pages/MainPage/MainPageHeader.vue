@@ -8,8 +8,7 @@
                 <MainPageHeaderUrlsSources/>
             </q-toolbar>
             <RouterTabs/>
-            <hr/>
-            <div id="lower-toolbar" class="q-ml-xl q-pa-md">
+            <div id="lower-toolbar">
                 <router-view name="groupButtons"></router-view>
             </div>
         </q-header>
