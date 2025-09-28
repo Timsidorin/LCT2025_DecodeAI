@@ -298,7 +298,7 @@
 <script setup>
 import {useTemplateRef, onMounted, ref, watch} from "vue";
 import {MapApi} from "../../../../providers/MapApi.js";
-import {useRegionStore} from "../../../../store/MapSelectRegion.js";
+import {useRegionStore} from "../../../../store/SelectRegion.js";
 
 let rfMap = useTemplateRef('rfMap');
 const store = useRegionStore();
@@ -310,7 +310,7 @@ let api = new MapApi();
 watch(typeColor, async (newType) => {
     if (newType) {
         try {
-            let result = await mapApi.coloringMap(typeColor.value);
+            let result = await api.coloringMap(typeColor.value);
             coloringMap(result);
         } catch (e) {
             return e;
@@ -319,6 +319,7 @@ watch(typeColor, async (newType) => {
 })
 
 function coloringMap(data) {
+    resetMapColors();
     data.data.regions.forEach((element) => {
         let selector = `path[data-code="${element.region_code}"]`
         rfMap.value.querySelector(selector).style.fill = `rgb${element.color}`;
@@ -334,12 +335,23 @@ async function getData() {
     }
 }
 
+function resetMapColors() {
+    if (!rfMap.value) return;
+
+    const allPaths = rfMap.value.querySelectorAll('path[data-code]');
+    allPaths.forEach(path => {
+        path.style.fill = 'var(--text-grey-color)';
+    });
+}
+
 function handleMapClick(e) {
-    let region = {
-        label: e.target.dataset.title,
-        value: e.target.dataset.code
+    if (e.target.dataset.title) {
+        let region = {
+            label: e.target.dataset.title,
+            value: e.target.dataset.code
+        }
+        store.setRegion(region);
     }
-    store.setRegion(region);
 }
 
 onMounted(async () => {

@@ -7,9 +7,9 @@
 import BaseGraph from "./BaseGraph.vue";
 import {StatisticApi} from "../../providers/StatisticApi.js";
 import {onMounted, ref} from "vue";
-import {useSelectDateStore} from "../../store/MapSelectDate.js";
+import {useSelectDateStore} from "../../store/SelectDate.js";
 import {useWatchRegion, useWatchStartDate, useWatchEndDate} from "../../composables/watchChangesMapPage.js";
-import {useRegionStore} from "../../store/MapSelectRegion.js";
+import {useRegionStore} from "../../store/SelectRegion.js";
 
 const storeRegion = useRegionStore();
 const storeDate = useSelectDateStore();
@@ -22,7 +22,7 @@ async function getData() {
     loading.value = true;
     series.value = [];
     try {
-        let response = await api.getSourceStatistic(storeDate.startDate, storeDate.endDate, storeRegion.region);
+        let response = await api.getSourceStatistic(storeDate.startDate, storeDate.endDate, storeRegion.region.value);
         let sources = {data: []};
         response.data.sources.sources.forEach((element) => {
             series.value.push({

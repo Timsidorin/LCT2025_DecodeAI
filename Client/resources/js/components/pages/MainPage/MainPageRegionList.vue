@@ -1,11 +1,11 @@
 <template>
-    <q-select hint="Фильтр по региону" filled v-model="region" :options="list"/>
+    <q-select dense hint="Фильтр по региону" filled v-model="region" :options="list"/>
 </template>
 
 <script setup>
-import {RegionApi} from "../../../../providers/RegionApi.js";
+import {RegionApi} from "../../../providers/RegionApi.js";
 import {computed, onMounted, ref, watch} from "vue";
-import {useRegionStore} from "../../../../store/MapSelectRegion.js";
+import {useRegionStore} from "../../../store/SelectRegion.js";
 
 const store = useRegionStore();
 const api = new RegionApi();
@@ -18,8 +18,8 @@ const region = computed({
 
 async function getData() {
     try {
-        let response = await api.getListRegion();
-        list.value = response.data.regions
+        let response = await api.getListRegion(true);
+        list.value = response.data.region_hierarchy.regions
     } catch (e) {
         return e;
     }

@@ -1,17 +1,14 @@
 import {BaseApi} from "./BaseApi.js";
 
-export class RegionApi extends BaseApi{
+export class ProductApi extends BaseApi{
     constructor() {
         super(__BASE__PYTHON__URL__);
     }
 
-    async getListRegion(includeCities) {
+    async getListProduct() {
         try {
             super.httpMethod = 'get';
-            super.sourceUrl = '/api/dashboard/regions';
-            super.params = {
-                include_cities: includeCities,
-            }
+            super.sourceUrl = '/api/dashboard/stats/products';
             return super.createRequest();
         } catch (e) {
             return e;

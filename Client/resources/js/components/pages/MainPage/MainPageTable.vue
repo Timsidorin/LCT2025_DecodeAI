@@ -29,10 +29,10 @@
 </template>
 
 <script setup>
-import {useSelectDateStore} from "../../../store/MapSelectDate.js";
+import {useSelectDateStore} from "../../../store/SelectDate.js";
 import {onMounted, ref} from "vue";
 import {StatisticApi} from "../../../providers/StatisticApi.js";
-import {useRegionStore} from "../../../store/MapSelectRegion.js";
+import {useRegionStore} from "../../../store/SelectRegion.js";
 import {useWatchRegion, useWatchStartDate, useWatchEndDate} from "../../../composables/watchChangesMapPage.js";
 
 
