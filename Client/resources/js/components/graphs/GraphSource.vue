@@ -1,6 +1,6 @@
 <template>
     <p v-if="loading">Загрузка</p>
-    <base-graph v-else :column="column" type="category" :series="series" :legend="{}"/>
+    <base-graph v-else title-card="Региональная статистика по источнику" :column="column" type="category" :series="series" :legend="{}"/>
 </template>
 
 <script setup>

@@ -20,6 +20,7 @@
         </q-card-section>
         <q-card-section>
             <div id="rf-map" ref="rfMap" class="rf-map">
+                <p v-if="loadingColor">крашу карту</p>
                 <svg xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg"
                      xmlns:xlink="http://www.w3.org/1999/xlink" version="1.2" baseProfile="tiny" x="0px" y="0px"
                      viewBox="0 0 1000 600" xml:space="preserve" xmlns:xml="http://www.w3.org/XML/1998/namespace">
@@ -306,12 +307,15 @@ const store = useRegionStore();
 //Получение данных и покраска карты
 let typeColor = ref('positive');
 let api = new MapApi();
+const loadingColor = ref(true);
 
 watch(typeColor, async (newType) => {
     if (newType) {
         try {
+            loadingColor.value = true;
             let result = await api.coloringMap(typeColor.value);
             coloringMap(result);
+            loadingColor.value = false;
         } catch (e) {
             return e;
         }
@@ -320,17 +324,23 @@ watch(typeColor, async (newType) => {
 
 function coloringMap(data) {
     resetMapColors();
+
     data.data.regions.forEach((element) => {
         let selector = `path[data-code="${element.region_code}"]`
-        rfMap.value.querySelector(selector).style.fill = `rgb${element.color}`;
+        if (rfMap.value.querySelector(selector)) {
+            rfMap.value.querySelector(selector).style.fill = `rgb${element.color}`;
+        }
     });
 }
 
 async function getData() {
     try {
+        loadingColor.value = true;
         let result = await api.coloringMap(typeColor.value);
         coloringMap(result);
+        loadingColor.value = false;
     } catch (e) {
+        console.log(e)
         return e;
     }
 }
