@@ -67,6 +67,230 @@ class ReviewAnalyticsRepository:
 
         return gender_data
 
+    async def get_reviews_trends_data(
+            self,
+            region_code: Optional[str] = None,
+            city: Optional[str] = None,
+            product: Optional[str] = None,
+            date_from: Optional[datetime] = None,
+            date_to: Optional[datetime] = None
+    ) -> List[List]:
+        """Получить данные для графика трендов по отзывам"""
+        query = select(
+            extract('year', Review.datetime_review).label('year'),
+            extract('month', Review.datetime_review).label('month'),
+            extract('day', Review.datetime_review).label('day'),
+            func.count(Review.uuid).label('total_reviews'),
+            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_count'),
+            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_count'),
+            func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral_count'),
+            Review.region_code,
+            Review.city,
+            Review.product
+        ).group_by(
+            extract('year', Review.datetime_review),
+            extract('month', Review.datetime_review),
+            extract('day', Review.datetime_review),
+            Review.region_code,
+            Review.city,
+            Review.product
+        ).order_by(
+            extract('year', Review.datetime_review),
+            extract('month', Review.datetime_review),
+            extract('day', Review.datetime_review)
+        )
+
+        if region_code:
+            query = query.where(Review.region_code == region_code)
+
+        if city:
+            query = query.where(Review.city.ilike(f"%{city}%"))
+
+        if product:
+            query = query.where(Review.product.ilike(f"%{product}%"))
+
+        if date_from:
+            query = query.where(Review.datetime_review >= date_from)
+
+        if date_to:
+            query = query.where(Review.datetime_review <= date_to)
+
+        result = await self.session.execute(query)
+
+        chart_data = [
+            [
+                "Positive_Reviews",
+                "Negative_Reviews",
+                "Neutral_Reviews",
+                "Total_Reviews",
+                "Sentiment_Score",
+                "Region_Code",
+                "City",
+                "Product",
+                "Date"
+            ]
+        ]
+
+        for row in result:
+            date_str = f"{int(row.year)}-{int(row.month):02d}-{int(row.day):02d}"
+
+            total = row.total_reviews
+            sentiment_score = 0
+            if total > 0:
+                sentiment_score = (row.positive_count - row.negative_count) / total
+
+            chart_data.append([
+                row.positive_count,
+                row.negative_count,
+                row.neutral_count,
+                row.total_reviews,
+                round(sentiment_score, 3),
+                row.region_code or "",
+                row.city or "",
+                row.product or "",
+                date_str
+            ])
+
+        return chart_data
+
+    async def get_reviews_trends_aggregated(
+            self,
+            region_code: Optional[str] = None,
+            city: Optional[str] = None,
+            product: Optional[str] = None,
+            date_from: Optional[datetime] = None,
+            date_to: Optional[datetime] = None,
+            group_by: str = "day"
+    ) -> List[List]:
+        """Получить агрегированные данные трендов с разной группировкой"""
+        if group_by == "week":
+            date_part = func.date_trunc('week', Review.datetime_review)
+        elif group_by == "month":
+            date_part = func.date_trunc('month', Review.datetime_review)
+        else:  # day
+            date_part = func.date_trunc('day', Review.datetime_review)
+
+        query = select(
+            date_part.label('period'),
+            func.count(Review.uuid).label('total_reviews'),
+            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_count'),
+            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_count'),
+            func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral_count')
+        ).group_by(
+            date_part
+        ).order_by(
+            date_part
+        )
+        if region_code:
+            query = query.where(Review.region_code == region_code)
+
+        if city:
+            query = query.where(Review.city.ilike(f"%{city}%"))
+
+        if product:
+            query = query.where(Review.product.ilike(f"%{product}%"))
+
+        if date_from:
+            query = query.where(Review.datetime_review >= date_from)
+
+        if date_to:
+            query = query.where(Review.datetime_review <= date_to)
+
+        result = await self.session.execute(query)
+        chart_data = [
+            [
+                "Positive_Reviews",
+                "Negative_Reviews",
+                "Neutral_Reviews",
+                "Total_Reviews",
+                "Sentiment_Score",
+                "Date"
+            ]
+        ]
+
+        for row in result:
+            period_str = row.period.strftime('%Y-%m-%d')
+            total = row.total_reviews
+            sentiment_score = 0
+
+            if total > 0:
+                sentiment_score = (row.positive_count - row.negative_count) / total
+
+            chart_data.append([
+                row.positive_count,
+                row.negative_count,
+                row.neutral_count,
+                row.total_reviews,
+                round(sentiment_score, 3),
+                period_str
+            ])
+
+        return chart_data
+
+    async def get_reviews_trends_data_echarts_format(
+            self,
+            region_code: Optional[str] = None,
+            city: Optional[str] = None,
+            product: Optional[str] = None,
+            date_from: Optional[datetime] = None,
+            date_to: Optional[datetime] = None
+    ) -> List[List]:
+        """Получить агрегированные данные по месяцам для графика трендов"""
+
+        # Используем date_trunc для группировки по месяцам
+        month_truncated = func.date_trunc('month', Review.datetime_review).label('month_period')
+
+        query = select(
+            month_truncated,
+            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_reviews'),
+            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_reviews'),
+            func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral_reviews'),
+            func.count(Review.uuid).label('total_reviews')
+        ).group_by(
+            month_truncated
+        ).order_by(
+            month_truncated
+        )
+        if region_code:
+            query = query.where(Review.region_code == region_code)
+
+        if city:
+            query = query.where(Review.city.ilike(f"%{city}%"))
+
+        if product:
+            query = query.where(Review.product.ilike(f"%{product}%"))
+
+        if date_from:
+            query = query.where(Review.datetime_review >= date_from)
+
+        if date_to:
+            query = query.where(Review.datetime_review <= date_to)
+
+        result = await self.session.execute(query)
+
+        chart_data = [
+            [
+                "Positive_Reviews",  # Положительные отзывы
+                "Negative_Reviews",  # Негативные отзывы
+                "Neutral_Reviews",  # Нейтральные отзывы
+                "Total_Reviews",  # Общее количество
+                "Month"  # Месяц
+            ]
+        ]
+
+        for row in result:
+            month_str = row.month_period.strftime('%Y-%m') if row.month_period else "2024-01"
+
+            chart_data.append([
+                row.positive_reviews,  # число
+                row.negative_reviews,  # число
+                row.neutral_reviews,  # число
+                row.total_reviews,  # число
+                month_str  # строка
+            ])
+
+        return chart_data
+
     async def get_source_distribution(self, filters: Optional[ReviewFilters] = None) -> Dict[str, int]:
         query = select(
             Review.source,
@@ -140,8 +364,8 @@ class ReviewAnalyticsRepository:
         regions = []
         for row in result:
             regions.append({
-                "region_name": row.region,
-                "region_code": row.region_code,
+                "label": row.region,
+                "value": row.region_code,
                 "reviews_count": row.reviews_count
             })
 
@@ -183,8 +407,8 @@ class ReviewAnalyticsRepository:
             region_key = f"{row.region}_{row.region_code}"
             if region_key not in regions_hierarchy:
                 regions_hierarchy[region_key] = {
-                    "region_name": row.region,
-                    "region_code": row.region_code,
+                    "label": row.region,
+                    "value": row.region_code,
                     "total_reviews": 0,
                     "cities": []
                 }

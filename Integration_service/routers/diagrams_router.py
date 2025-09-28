@@ -103,6 +103,8 @@ async def get_sources_statistics(
 # ========== СТАТИСТИКА ПО РЕГИОНАМ И ПРОДУКТАМ ==========
 
 
+
+
 @router.get("/regions-products/statistics",
             summary="Статистика по регионам и продуктам",
             response_model=RegionProductAnalyticsResponse)
@@ -146,6 +148,78 @@ async def get_regions_products_statistics(
             detail=f"Ошибка получения статистики по регионам и продуктам: {str(e)}"
         )
 
+
+
+@router.get("/trends/echarts-data", summary="Данные для графика в формате ECharts")
+async def get_echarts_trends_data(
+        region_code: Optional[str] = Query(None, description="Код региона"),
+        city: Optional[str] = Query(None, description="Город"),
+        product: Optional[str] = Query(None, description="Продукт"),
+        date_from: Optional[datetime] = Query(None, description="Дата начала"),
+        date_to: Optional[datetime] = Query(None, description="Дата окончания"),
+        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
+):
+    """
+    Возвращает данные в точном формате ECharts:
+    """
+    try:
+        chart_data = await analytics_repo.get_reviews_trends_data_echarts_format(
+            region_code=region_code,
+            city=city,
+            product=product,
+            date_from=date_from,
+            date_to=date_to
+        )
+
+        return chart_data
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка получения данных: {str(e)}"
+        )
+
+
+@router.get("/trends/detailed-data", summary="Детальные данные трендов с разбивкой")
+async def get_detailed_trends_data(
+        region_code: Optional[str] = Query(None, description="Код региона"),
+        city: Optional[str] = Query(None, description="Город"),
+        product: Optional[str] = Query(None, description="Продукт"),
+        date_from: Optional[datetime] = Query(None, description="Дата начала"),
+        date_to: Optional[datetime] = Query(None, description="Дата окончания"),
+        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
+):
+    """
+    Получить детальные данные трендов с разбивкой по регионам/городам/продуктам
+    для более сложных графиков с несколькими сериями данных.
+    """
+    try:
+        detailed_data = await analytics_repo.get_reviews_trends_data(
+            region_code=region_code,
+            city=city,
+            product=product,
+            date_from=date_from,
+            date_to=date_to
+        )
+
+        return {
+            "data": detailed_data,
+            "filters": {
+                "region_code": region_code,
+                "city": city,
+                "product": product,
+                "date_from": date_from.isoformat() if date_from else None,
+                "date_to": date_to.isoformat() if date_to else None
+            },
+            "format": "echarts_compatible",
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка получения детальных данных: {str(e)}"
+        )
 
 # ========== ТЕПЛОВАЯ КАРТА SENTIMENT ==========
 

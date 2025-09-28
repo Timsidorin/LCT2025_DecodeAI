@@ -218,6 +218,108 @@ class DashboardService:
 
         return dashboard_data
 
+
+    async def get_reviews_trends_chart_data(
+            self,
+            region_code: Optional[str] = None,
+            city: Optional[str] = None,
+            product: Optional[str] = None,
+            date_from: Optional[datetime] = None,
+            date_to: Optional[datetime] = None,
+            group_by: str = "day"
+    ) -> Dict[str, Any]:
+        """Получить данные для графика трендов отзывов"""
+
+        chart_data = await self.analytics_repo.get_reviews_trends_aggregated(
+            region_code=region_code,
+            city=city,
+            product=product,
+            date_from=date_from,
+            date_to=date_to,
+            group_by=group_by
+        )
+
+        period_text = self._get_period_text(date_from, date_to)
+
+        active_filters = []
+        if region_code:
+            active_filters.append(f"Регион: {region_code}")
+        if city:
+            active_filters.append(f"Город: {city}")
+        if product:
+            active_filters.append(f"Продукт: {product}")
+
+        filters_text = " | ".join(active_filters) if active_filters else "Все данные"
+
+        analytics = self._analyze_trends_data(chart_data)
+
+        return {
+            "chart_data": chart_data,
+            "chart_config": {
+                "title": f"Динамика отзывов{' - ' + period_text if period_text else ''}",
+                "subtitle": filters_text,
+                "group_by": group_by,
+                "data_points": len(chart_data) - 1,
+            },
+            "analytics": analytics,
+            "filters_applied": {
+                "region_code": region_code,
+                "city": city,
+                "product": product,
+                "date_from": date_from.isoformat() if date_from else None,
+                "date_to": date_to.isoformat() if date_to else None,
+                "group_by": group_by
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+
+    def _get_period_text(self, date_from: Optional[datetime], date_to: Optional[datetime]) -> str:
+        """Создать читаемый текст периода"""
+        if not date_from and not date_to:
+            return ""
+
+        if date_from and date_to:
+            return f"{date_from.strftime('%d.%m.%Y')} - {date_to.strftime('%d.%m.%Y')}"
+        elif date_from:
+            return f"с {date_from.strftime('%d.%m.%Y')}"
+        elif date_to:
+            return f"до {date_to.strftime('%d.%m.%Y')}"
+
+        return ""
+
+    def _analyze_trends_data(self, chart_data: List[List]) -> Dict[str, Any]:
+        """Анализ данных трендов для получения инсайтов"""
+        if len(chart_data) <= 1:
+            return {"status": "no_data"}
+
+        data_rows = chart_data[1:]
+
+        # Общая статистика
+        total_reviews = sum(row[3] for row in data_rows)  # Total_Reviews
+        total_positive = sum(row[0] for row in data_rows)  # Positive_Reviews
+        total_negative = sum(row[1] for row in data_rows)  # Negative_Reviews
+
+        if len(data_rows) >= 7:
+            first_week_avg = sum(row[4] for row in data_rows[:7]) / 7  # Sentiment_Score
+            last_week_avg = sum(row[4] for row in data_rows[-7:]) / 7
+            trend_direction = "improving" if last_week_avg > first_week_avg else "declining"
+            trend_change = abs(last_week_avg - first_week_avg)
+        else:
+            trend_direction = "stable"
+            trend_change = 0
+
+        return {
+            "status": "success",
+            "total_reviews": total_reviews,
+            "total_positive": total_positive,
+            "total_negative": total_negative,
+            "positive_rate": round((total_positive / total_reviews * 100) if total_reviews > 0 else 0, 2),
+            "negative_rate": round((total_negative / total_reviews * 100) if total_reviews > 0 else 0, 2),
+            "trend_direction": trend_direction,
+            "trend_change": round(trend_change, 3),
+            "data_quality": "good" if len(data_rows) >= 30 else "limited"
+        }
+
     async def get_all_regions(self, include_cities: bool = False, ) -> Dict[str, Any]:
         """Получить все регионы"""
         if include_cities:
