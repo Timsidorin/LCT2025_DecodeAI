@@ -46,7 +46,7 @@ async function onSubmit() {
         .then(() => {
             router.push('/main')
         })
-        .catch(e => {console.log(e)});
+        .catch(e => {return e;});
 }
 
 </script>

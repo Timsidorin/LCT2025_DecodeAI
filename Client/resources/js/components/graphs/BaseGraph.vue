@@ -1,6 +1,9 @@
 <template>
     <q-card style="border-radius: 10px">
         <q-card-section>
+            <div class="text-h6">{{titleCard}}</div>
+        </q-card-section>
+        <q-card-section>
             <div style="height: 300px" ref="baseGraphDiv"/>
         </q-card-section>
     </q-card>
@@ -11,13 +14,17 @@ import {onMounted, useTemplateRef} from 'vue';
 import * as echarts from 'echarts';
 
 const htmlElement = useTemplateRef('baseGraphDiv');
-const props = defineProps(['type', 'column', 'series', 'legend']);
+const props = defineProps(['type', 'column', 'series', 'legend', 'titleCard', 'dataset', 'tooltip', 'matrix']);
 
-onMounted(() => {
+function initGraph() {
     let chart = echarts.init(htmlElement.value);
     let option = {
-        tooltip: {},
-        legend: props.legend,
+        matrix: props.matrix,
+        dataset: props.dataset,
+        tooltip: {...props.tooltip},
+        legend: {
+            ...props.legend,
+        },
         xAxis: {
             type: props.type,
             data: props.column
@@ -28,6 +35,10 @@ onMounted(() => {
         series: props.series
     };
     option && chart.setOption(option);
+}
+
+onMounted(() => {
+    initGraph();
 })
 </script>
 

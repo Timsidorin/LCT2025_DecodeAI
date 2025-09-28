@@ -6,25 +6,15 @@ import "quasar/src/css/index.sass";
 import "@quasar/extras/material-icons/material-icons.css";
 import "../css/app.css";
 import langRu from "quasar/lang/ru";
+import {createPinia} from "pinia";
+import {colorConfig} from "./config/colorQuasar.js";
 
+const pinia = createPinia();
 const app = createApp(App);
 app.use(router)
     .use(Quasar, {
         lang: langRu,
-        config: {
-            brand: {
-                primary: '#2b61ec',
-                secondary: '#26A69A',
-                accent: '#9C27B0',
-
-                dark: '#1d1d1d',
-                'dark-page': '#121212',
-
-                positive: '#21BA45',
-                negative: '#C10015',
-                info: '#31CCEC',
-                warning: '#F2C037'
-            }
-        }
+        config: colorConfig
     })
+    .use(pinia)
     .mount('#app');

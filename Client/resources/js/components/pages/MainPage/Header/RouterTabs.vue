@@ -19,11 +19,11 @@ let routerTabs = [
         href: '/main/map',
     },
     {
-        label: "Обзор",
+        label: "Детально",
         href: '/main/review',
     },
     {
-        label: "Дашборд",
+        label: "Конструктор",
         href: '/main/dashboard',
     }
 ];
