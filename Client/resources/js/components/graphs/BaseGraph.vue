@@ -1,6 +1,9 @@
 <template>
     <q-card style="border-radius: 10px">
         <q-card-section>
+            <div class="text-h6">Региональная статистика по источнику</div>
+        </q-card-section>
+        <q-card-section>
             <div style="height: 300px" ref="baseGraphDiv"/>
         </q-card-section>
     </q-card>
@@ -13,11 +16,13 @@ import * as echarts from 'echarts';
 const htmlElement = useTemplateRef('baseGraphDiv');
 const props = defineProps(['type', 'column', 'series', 'legend']);
 
-onMounted(() => {
+function initGraph() {
     let chart = echarts.init(htmlElement.value);
     let option = {
         tooltip: {},
-        legend: props.legend,
+        legend: {
+            ...props.legend,
+        },
         xAxis: {
             type: props.type,
             data: props.column
@@ -28,6 +33,10 @@ onMounted(() => {
         series: props.series
     };
     option && chart.setOption(option);
+}
+
+onMounted(() => {
+    initGraph();
 })
 </script>
 

@@ -3,17 +3,19 @@
         <div class="col-7">
             <main-page-map-russia />
         </div>
-        <div class="q-ml-xl column" style="width: 100%; max-width: 620px">
-            <main-page-map-date-picker class="q-mb-md"/>
-            <main-page-map-table class="q-mb-md"/>
-            <graph-source/>
+        <div class="q-ml-xl column" style="width: 100%; max-width: 700px">
+            <main-page-date-picker class="q-mb-md"/>
+            <main-page-table class="q-mb-md"/>
+            <div>
+                <graph-source/>
+            </div>
         </div>
     </div>
 </template>
 
 <script setup>
 import MainPageMapRussia from "../../components/pages/MainPage/Map/MainPageMapRussia.vue";
-import MainPageMapTable from "../../components/pages/MainPage/Map/MainPageMapTable.vue";
-import MainPageMapDatePicker from "../../components/pages/MainPage/Map/MainPageMapDatePicker.vue";
+import MainPageTable from "../../components/pages/MainPage/MainPageTable.vue";
+import MainPageDatePicker from "../../components/pages/MainPage/MainPageDatePicker.vue";
 import GraphSource from "../../components/graphs/GraphSource.vue";
 </script>

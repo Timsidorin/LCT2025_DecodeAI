@@ -1,5 +1,5 @@
 <template>
-    <q-card style="border-radius: 10px">
+    <q-card style="border-radius: 10px; width: 100%">
         <q-card-section>
             <div class="text-h6">Фильтрация</div>
         </q-card-section>
@@ -42,19 +42,25 @@
 </template>
 
 <script setup>
-import {useSelectDateStore} from "../../../../store/MapSelectDate.js";
+import {useSelectDateStore} from "../../../store/MapSelectDate.js";
 import {computed} from "vue";
-import MainPageMapRegionList from "./MainPageMapRegionList.vue";
+import MainPageMapRegionList from "./Map/MainPageMapRegionList.vue";
 
 const store = useSelectDateStore();
 
 const startDate = computed({
     get: () => store.startDate,
-    set: (value) => store.setStartDate(value)
+    set: (value) => {
+        const formattedDate = value.replace(/\//g, '-');
+        store.setStartDate(formattedDate);
+    }
 });
 
 const endDate = computed({
     get: () => store.endDate,
-    set: (value) => store.setEndDate(value)
+    set: (value) => {
+        const formattedDate = value.replace(/\//g, '-');
+        store.setEndDate(formattedDate);
+    }
 });
 </script>

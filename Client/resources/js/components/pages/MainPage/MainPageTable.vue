@@ -6,7 +6,8 @@
         :columns="columns"
         row-key="id"
         virtual-scroll
-        style="height: 300px; border-radius: 10px"
+        title="Региональная статистика по продуктам"
+        style="height: 400px; border-radius: 10px; width: 100%"
     >
         <template v-slot:body="props">
             <q-tr :props="props">
@@ -28,18 +29,21 @@
 </template>
 
 <script setup>
-import {useSelectDateStore} from "../../../../store/MapSelectDate.js";
+import {useSelectDateStore} from "../../../store/MapSelectDate.js";
 import {onMounted, ref} from "vue";
-import {StatisticApi} from "../../../../providers/StatisticApi.js";
-import {useRegionStore} from "../../../../store/MapSelectRegion.js";
-import {useWatchRegion, useWatchStartDate, useWatchEndDate} from "../../../../composables/watchChangesMapPage.js";
+import {StatisticApi} from "../../../providers/StatisticApi.js";
+import {useRegionStore} from "../../../store/MapSelectRegion.js";
+import {useWatchRegion, useWatchStartDate, useWatchEndDate} from "../../../composables/watchChangesMapPage.js";
 
-const storeDate = useSelectDateStore();
+
 const api = new StatisticApi();
-const row = ref([]);
-const loading = ref(true);
-const storeRegion = useRegionStore();
 
+const loading = ref(true);
+
+const storeRegion = useRegionStore();
+const storeDate = useSelectDateStore();
+
+const row = ref([]);
 const columns = [
     {name: 'product', field: 'product', align: 'center', label: 'Продукт', sortable: true,},
     {name: 'positive_reviews', field: 'positive_reviews', align: 'center', label: 'Положительно', sortable: true},
@@ -58,7 +62,7 @@ async function getDataTable() {
         return e;
     }
 }
-//TODO: ПОЧЕМУ СТРОКА НЕПРАВИЛЬНО ПАРСИТСЯ ПРИ ПЕРЕДАЧИ ДАТЫ
+
 useWatchRegion(storeRegion, getDataTable);
 useWatchStartDate(storeDate, getDataTable);
 useWatchEndDate(storeDate, getDataTable);

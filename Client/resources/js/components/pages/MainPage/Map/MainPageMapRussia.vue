@@ -16,6 +16,9 @@
     />
     <q-card style="border-radius: 10px">
         <q-card-section>
+            <div class="text-h6">Теповая карта по отзывам</div>
+        </q-card-section>
+        <q-card-section>
             <div id="rf-map" ref="rfMap" class="rf-map">
                 <svg xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg"
                      xmlns:xlink="http://www.w3.org/1999/xlink" version="1.2" baseProfile="tiny" x="0px" y="0px"
@@ -295,8 +298,10 @@
 <script setup>
 import {useTemplateRef, onMounted, ref, watch} from "vue";
 import {MapApi} from "../../../../providers/MapApi.js";
+import {useRegionStore} from "../../../../store/MapSelectRegion.js";
 
 let rfMap = useTemplateRef('rfMap');
+const store = useRegionStore();
 
 //Получение данных и покраска карты
 let typeColor = ref('positive');
@@ -330,7 +335,11 @@ async function getData() {
 }
 
 function handleMapClick(e) {
-     store.setRegion(e.target.dataset.code);
+    let region = {
+        label: e.target.dataset.title,
+        value: e.target.dataset.code
+    }
+    store.setRegion(region);
 }
 
 onMounted(async () => {
