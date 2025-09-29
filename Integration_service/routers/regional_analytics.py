@@ -24,7 +24,18 @@ async def get_dashboard_service(
 
 
 
-@router.get("/", response_model=Dict[str, Any], summary="Региональная аналитика")
+@router.get("/", summary="Все встречающиеся регионы в отзывах")  # ← ИЗМЕНЕНО С "/all" НА "/"
+async def get_regions(
+        include_cities: bool = Query(False, description="Включить города для каждого региона"),
+        dashboard_service: DashboardService = Depends(get_dashboard_service),
+):
+    """ОРИГИНАЛЬНЫЙ ENDPOINT - НЕ ТРОГАТЬ!"""
+    try:
+        return await dashboard_service.get_all_regions(include_cities)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения регионов: {str(e)}")
+
+@router.get("/dashboard", summary="Региональная аналитика") 
 async def get_regional_dashboard(
         region_code: Optional[str] = Query(None, description="Конкретный регион для детального анализа"),
         limit: int = Query(20, ge=1, le=100, description="Количество регионов в топе"),
