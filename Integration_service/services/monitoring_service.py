@@ -182,7 +182,7 @@ class ReviewMonitoringService:
 
             regions_text = ", ".join(regions) if regions else "Различные регионы"
 
-            message_text = f"""🚨 <b>КРИТИЧЕСКОЕ УВЕДОМЛЕНИЕ!</b>
+            message_text = f"""🚨 <b>УВЕДОМЛЕНИЕ!</b>
 
 📊 Обнаружен резкий рост негативных отзывов по продукту <b>"{product}"</b>
 
@@ -243,10 +243,9 @@ class ReviewMonitoringService:
             logger.error(f"❌ Неожиданная ошибка при отправке в бота: {e}")
             return False
 
-    # Остальные методы остаются без изменений...
     async def send_daily_report(self):
         """Ежедневный отчет"""
-        pass  # Упрощаем для теста
+        pass
 
 
 monitoring_service = ReviewMonitoringService()

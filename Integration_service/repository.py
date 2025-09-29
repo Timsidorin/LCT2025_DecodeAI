@@ -161,15 +161,9 @@ class ReviewAnalyticsRepository:
             region_code: Optional[str] = None,
             city: Optional[str] = None
     ) -> List[List]:
-        """Получить данные трендов по продуктам - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
-
-        # Импорты в начале метода
+        """Получить данные трендов по продуктам"""
         from sqlalchemy import literal_column, union_all
-
-        # Группировка по месяцам
         month_truncated = func.date_trunc('month', Review.datetime_review).label('month_period')
-
-        # Собираем данные для каждого продукта отдельно (БЕЗ UNION)
         all_data = {}
         all_months = set()
         all_series = []
@@ -179,8 +173,6 @@ class ReviewAnalyticsRepository:
             sentiment_type = product_filter['type']
             series_name = f"{product_name} ({sentiment_type})"
             all_series.append(series_name)
-
-            # Отдельный запрос для каждого продукта
             query = select(
                 month_truncated,
                 func.count(Review.uuid).label('review_count')
@@ -196,8 +188,6 @@ class ReviewAnalyticsRepository:
             ).order_by(
                 month_truncated
             )
-
-            # Дополнительные фильтры
             if region_code:
                 query = query.where(Review.region_code == region_code)
 
@@ -206,7 +196,6 @@ class ReviewAnalyticsRepository:
 
             result = await self.session.execute(query)
 
-            # Собираем данные для этой серии
             for row in result:
                 month_str = row.month_period.strftime('%Y-%m') if row.month_period else "2024-01"
                 all_months.add(month_str)
@@ -216,14 +205,10 @@ class ReviewAnalyticsRepository:
 
                 all_data[month_str][series_name] = row.review_count
 
-        # Создаем итоговую структуру
         all_months = sorted(list(all_months))
 
-        # Заголовок
         header = ['Month'] + all_series
         chart_data = [header]
-
-        # Данные по месяцам
         for month in all_months:
             row_data = [month]
 
@@ -309,7 +294,6 @@ class ReviewAnalyticsRepository:
 
         return chart_data
 
-    # Добавляем этот метод в конец класса ReviewAnalyticsRepository в repository.py
 
     async def get_product_sentiment_by_months(
             self,
@@ -319,7 +303,6 @@ class ReviewAnalyticsRepository:
     ) -> List[Dict[str, Any]]:
         """Получить sentiment по продуктам и месяцам для матричного графика"""
 
-        # Создаем alias для to_char функции
         month_alias = func.to_char(Review.datetime_review, 'YYYY-MM').label('month')
 
         query = select(
@@ -331,19 +314,17 @@ class ReviewAnalyticsRepository:
             func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral_count')
         ).group_by(
             Review.product,
-            month_alias  # Используем alias вместо повторной функции
+            month_alias
         ).having(
             func.count(Review.uuid) >= min_reviews_per_month
         ).order_by(
             Review.product,
-            month_alias  # Используем alias в ORDER BY тоже
+            month_alias
         )
 
-        # Применяем фильтры используя существующий метод
         if filters:
             query = self._apply_filters(query, filters)
 
-        # Получаем топ продуктов отдельным запросом
         top_products_query = select(Review.product).group_by(Review.product).order_by(
             func.count(Review.uuid).desc()
         ).limit(limit_products)
@@ -357,13 +338,11 @@ class ReviewAnalyticsRepository:
         if not top_products:
             return []
 
-        # Фильтруем основной запрос по топ продуктам
         query = query.where(Review.product.in_(top_products))
 
         result = await self.session.execute(query)
         rows = result.fetchall()
 
-        # Обрабатываем результаты
         data = []
         for row in rows:
             total = row.total_reviews or 0
@@ -374,7 +353,7 @@ class ReviewAnalyticsRepository:
             if total > 0:
                 data.append({
                     "product": row.product,
-                    "month": row.month,  # Теперь доступен через alias
+                    "month": row.month,
                     "total_reviews": total,
                     "positive_count": positive,
                     "negative_count": negative,
@@ -480,7 +459,7 @@ class ReviewAnalyticsRepository:
             ).label('avg_rating')
         )
 
-        # Применяем фильтры
+
         if region_code:
             query = query.where(Review.region_code == region_code)
         if city:
@@ -495,18 +474,14 @@ class ReviewAnalyticsRepository:
             date_to_end = date_to_naive.replace(hour=23, minute=59, second=59, microsecond=999999)
             query = query.where(Review.datetime_review <= date_to_end)
 
-        # ИСПРАВЛЕНИЕ: Фильтруем по значениям "Ж" и "М"
         query = query.where(Review.gender.in_(['Ж', 'М']))
         query = query.group_by(Review.gender)
         query = query.order_by(Review.gender)
-
-        print(f"Gender analysis SQL: {str(query.compile(compile_kwargs={'literal_binds': True}))}")
 
         result = await self.session.execute(query)
 
         gender_data = []
         for row in result:
-            # Преобразуем значения для отображения
             if row.gender == 'М':
                 gender_display = 'Мужской'
                 gender_code = 'male'
@@ -537,11 +512,6 @@ class ReviewAnalyticsRepository:
                     (row.positive_reviews - row.negative_reviews) / row.total_reviews if row.total_reviews > 0 else 0,
                     3)
             })
-
-        print(f"Gender analysis result: {len(gender_data)} genders found")
-        for item in gender_data:
-            print(f"  {item['gender']} ({item['gender_raw']}): {item['total_reviews']} reviews")
-
         return gender_data
 
     async def get_source_distribution(self, filters: Optional[ReviewFilters] = None) -> Dict[str, int]:
@@ -817,7 +787,6 @@ class ReviewAnalyticsRepository:
             desc(func.sum(case((Review.rating == 'positive', 1), else_=0)))
         )
 
-        # Применяем фильтры только если они указаны
         if filters.region_code:
             query = query.where(Review.region_code == filters.region_code)
 
@@ -842,12 +811,11 @@ class ReviewAnalyticsRepository:
             negative = row.negative_reviews
             neutral = row.neutral_reviews
 
-            # Вычисляем проценты и sentiment score
+
             positive_percentage = round((positive / total * 100) if total > 0 else 0, 2)
             negative_percentage = round((negative / total * 100) if total > 0 else 0, 2)
             neutral_percentage = round((neutral / total * 100) if total > 0 else 0, 2)
 
-            # Упрощенный ответ - только основные данные
             sources_stats.append({
                 'source': row.source,
                 'total_reviews': total,
@@ -978,7 +946,7 @@ class ReviewAnalyticsRepository:
         else:
             return "limited_data"
 
-    # ========== НОВЫЕ МЕТОДЫ ДЛЯ ТЕПЛОВОЙ КАРТЫ ==========
+    # ==========МЕТОДЫ ДЛЯ ТЕПЛОВОЙ КАРТЫ ==========
 
     async def get_regions_with_filtered_sentiment_heatmap(
             self,
@@ -1015,7 +983,6 @@ class ReviewAnalyticsRepository:
             total = row.total_reviews
             target_count = row.target_sentiment_count
 
-            # Процент целевого типа отзывов
             target_percentage = (target_count / total * 100) if total > 0 else 0
 
             all_data.append({
@@ -1024,8 +991,6 @@ class ReviewAnalyticsRepository:
                 'target_count': target_count,
                 'target_percentage': target_percentage
             })
-
-        # Получаем все проценты для определения относительных цветов
         all_percentages = [item['target_percentage'] for item in all_data]
 
         regions_with_colors = []
@@ -1057,7 +1022,6 @@ class ReviewAnalyticsRepository:
     ) -> str:
         """Определяет RGB цвет для одного типа sentiment в оттенках выбранного цвета"""
 
-        # Базовые цвета для каждого типа sentiment
         BASE_COLORS = {
             'positive': (34, 139, 34),  # Зеленый RGB
             'negative': (220, 20, 60),  # Красный RGB
@@ -1096,8 +1060,7 @@ class ReviewAnalyticsRepository:
             else:
                 intensity = 0.2
 
-        # Применяем интенсивность к RGB цвету
-        # Чем меньше intensity, тем светлее цвет (ближе к белому)
+
         r = int(base_rgb[0] * intensity + 255 * (1 - intensity))
         g = int(base_rgb[1] * intensity + 255 * (1 - intensity))
         b = int(base_rgb[2] * intensity + 255 * (1 - intensity))
@@ -1146,7 +1109,6 @@ class ReviewAnalyticsRepository:
                 'sentiment_score': sentiment_score
             })
 
-        # Получаем все sentiment_score для определения относительных цветов
         all_scores = [item['sentiment_score'] for item in all_data]
 
         regions_with_colors = []

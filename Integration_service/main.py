@@ -21,8 +21,6 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Запуск сервиса интеграции PulseAI...")
 
     try:
-        # Запускаем мониторинг отзывов
-        logger.info("📊 Инициализация системы мониторинга...")
         #await monitoring_service.start_monitoring()
         logger.info("✅ Система мониторинга запущена")
 
@@ -46,7 +44,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=configs.PROJECT_NAME,
     lifespan=lifespan,
-    description="PulseAI Integration Service"
+    description="Сервис интеграции (BI)"
 )
 
 app.add_middleware(
