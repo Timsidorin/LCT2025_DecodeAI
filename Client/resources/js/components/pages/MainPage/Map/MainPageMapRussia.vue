@@ -20,8 +20,8 @@
         </q-card-section>
         <q-card-section>
             <div id="rf-map" ref="rfMap" class="rf-map">
-                <p v-if="loadingColor">крашу карту</p>
-                <svg xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg"
+                <base-loader v-show="loadingColor"/>
+                <svg v-show="!loadingColor" xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg"
                      xmlns:xlink="http://www.w3.org/1999/xlink" version="1.2" baseProfile="tiny" x="0px" y="0px"
                      viewBox="0 0 1000 600" xml:space="preserve" xmlns:xml="http://www.w3.org/XML/1998/namespace">
         <path
@@ -300,6 +300,7 @@
 import {useTemplateRef, onMounted, ref, watch} from "vue";
 import {MapApi} from "../../../../providers/MapApi.js";
 import {useRegionStore} from "../../../../store/SelectRegion.js";
+import BaseLoader from "../../../ui/BaseLoader.vue";
 
 let rfMap = useTemplateRef('rfMap');
 const store = useRegionStore();

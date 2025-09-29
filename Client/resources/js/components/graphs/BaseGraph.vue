@@ -27,7 +27,7 @@ function initGraph() {
         },
         xAxis: {
             type: props.type,
-            data: props.column
+            data: props.column,
         },
         yAxis: {
             type: 'value'

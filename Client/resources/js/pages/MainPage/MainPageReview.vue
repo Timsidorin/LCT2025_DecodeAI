@@ -3,11 +3,12 @@
         <div class="row q-gutter-x-xl">
             <GraphDynamicsOfChanges class="col-4"/>
             <GraphTonalityForAllProducts class="col-4"/>
+            <div class="col-3" >
+                <MainPageTable />
+            </div>
         </div>
         <div v-if="listProduct.length > 0" class="row q-gutter-x-xl">
-            <GraphComparison title="Сравнение положительных отзывов" type="positive" :list-product="listProduct"/>
-            <GraphComparison title="Сравнение нейтральных отзывов" type="neutral" :list-product="listProduct"/>
-            <GraphComparison title="Сравнение отрицательных отзывов" type="negative" :list-product="listProduct"/>
+            <GraphComparison title="Сравнение отзывов" :list-product="listProduct"/>
         </div>
     </div>
 </template>
@@ -18,6 +19,7 @@ import GraphTonalityForAllProducts from "../../components/graphs/GraphTonalityFo
 import GraphComparison from "../../components/graphs/GraphComparison.vue";
 import {ProductApi} from "../../providers/ProductApi.js";
 import {onMounted, ref} from "vue";
+import MainPageTable from "../../components/pages/MainPage/MainPageTable.vue";
 
 const api = new ProductApi();
 const listProduct = ref([]);
