@@ -390,3 +390,33 @@ class SentimentHeatmapResponse(BaseModel):
     total_regions: int = Field(..., description="Общее количество регионов")
     sentiment_filter: SentimentType = Field(..., description="Тип sentiment фильтра")
     color_scheme: Dict[str, str] = Field(..., description="Информация о цветовой схеме")
+
+
+
+class ProductAnalysisRequest(BaseModel):
+    """Запрос на анализ продуктов"""
+    name: str = Field(..., description="Название продукта")
+    type: Literal["positive", "negative", "neutral"] = Field(..., description="Тип анализа")
+
+class ProductsAnalysisFilters(BaseModel):
+    """Фильтры для анализа множественных продуктов"""
+    products: List[ProductAnalysisRequest] = Field(..., description="Список продуктов для анализа")
+    date_from: datetime = Field(..., description="Дата начала периода")
+    date_to: datetime = Field(..., description="Дата окончания периода")
+    region_code: Optional[str] = Field(None, description="Фильтр по региону (необязательно)")
+    city: Optional[str] = Field(None, description="Фильтр по городу (необязательно)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "products": [
+                    {"name": "Кредит", "type": "positive"},
+                    {"name": "Депозит", "type": "positive"},
+                    {"name": "Карта", "type": "negative"}
+                ],
+                "date_from": "2024-01-01T00:00:00",
+                "date_to": "2024-12-31T23:59:59",
+                "region_code": "RU-MOW",
+                "city": "Москва"
+            }
+        }

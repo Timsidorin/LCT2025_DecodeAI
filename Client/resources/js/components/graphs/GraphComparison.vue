@@ -1,7 +1,7 @@
 <template>
     <q-card class="custom-card">
         <q-card-section>
-            <div class="text-h6">{{title}}</div>
+            <div class="text-h6">{{ title }}</div>
         </q-card-section>
         <q-card-section class="scroll-content">
             <div class="q-pa-md">
@@ -9,7 +9,24 @@
                     :options="listProduct"
                     type="checkbox"
                     v-model="selectedProduct"
-                />
+                >
+                    <template v-slot:label="opt">
+                        <div class="row items-center">
+                            <span>{{ opt.label }}</span>
+                            <div v-if="selectedProduct.includes(opt.value)">
+                                <div>
+                                    <q-option-group
+                                        v-model="group"
+                                        :options="typeComp"
+                                        color="primary"
+                                        inline
+                                        dense
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </q-option-group>
             </div>
         </q-card-section>
         <q-card-section class="row justify-end">
@@ -23,9 +40,23 @@
 import GraphComparisonModal from "../modals/GraphComparisonModal.vue";
 import {computed, ref} from "vue";
 
-const props = defineProps(['title', 'type', 'list-product']);
+const props = defineProps(['title', 'list-product']);
 const selectedProduct = ref([]);
 const statusModel = ref(false);
+const typeComp = [
+    {
+        label: 'Положительно',
+        value: ''
+    },
+    {
+        label: 'Нейтрально',
+        value: ''
+    },
+    {
+        label: 'Отрицательно',
+        value: ''
+    }
+]
 
 const disabledStatus = computed(() => {
     return selectedProduct.value.length === 0;

@@ -32,3 +32,14 @@ export function useWatchEndDate(storeDate, func) {
         }
     );
 }
+
+export function useWatchProduct(storeProduct, func) {
+    watch(
+        () => storeProduct.product,
+        async (newId, oldId) => {
+            if (newId !== oldId) {
+                await func();
+            }
+        }
+    );
+}

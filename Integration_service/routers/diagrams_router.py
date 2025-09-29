@@ -10,7 +10,7 @@ from Integration_service.services.DashBoardService import DashboardService
 from Integration_service.schemas.processed_review import (
     ReviewFilters, RatingFilter, GenderFilter, SourceAnalyticsFilters,
     SentimentType, SourceAnalyticsResponse, RegionProductAnalyticsResponse,
-    SentimentHeatmapResponse
+    SentimentHeatmapResponse, ProductsAnalysisFilters
 )
 
 router = APIRouter(prefix="/api/dashboard", tags=["Дашборд аналитика"])
@@ -103,6 +103,8 @@ async def get_sources_statistics(
 # ========== СТАТИСТИКА ПО РЕГИОНАМ И ПРОДУКТАМ ==========
 
 
+
+
 @router.get("/regions-products/statistics",
             summary="Статистика по регионам и продуктам",
             response_model=RegionProductAnalyticsResponse)
@@ -146,6 +148,281 @@ async def get_regions_products_statistics(
             detail=f"Ошибка получения статистики по регионам и продуктам: {str(e)}"
         )
 
+
+# ========== АНАЛИЗ ПРОДУКТОВ ПО ТИПАМ ОТЗЫВОВ ==========
+
+@router.post("/products-sentiment-analysis", summary="Анализ продуктов по типам отзывов")
+async def get_products_sentiment_analysis_endpoint(
+        filters: ProductsAnalysisFilters,
+        dashboard_service: DashboardService = Depends(get_dashboard_service)
+):
+    """
+    Анализ изменения отзывов по продуктам и типам по месяцам.
+
+    Принимает массив продуктов с указанием типа анализа:
+    - name: название продукта (например, "Кредит", "Депозит")
+    - type: тип отзывов ("positive", "negative", "neutral")
+
+    Возвращает данные в формате ECharts для построения графика трендов.
+
+    Пример запроса:
+    {
+        "products": [
+            {"name": "Кредит", "type": "positive"},
+            {"name": "Депозит", "type": "negative"},
+            {"name": "Карта", "type": "neutral"}
+        ],
+        "date_from": "2024-01-01T00:00:00",
+        "date_to": "2024-12-31T23:59:59",
+        "region_code": "RU-MOW",
+        "city": "Москва"
+    }
+
+    Возвращает:
+    {
+        "chart_data": [
+            ["Month", "Кредит (positive)", "Депозит (negative)", "Карта (neutral)"],
+            ["2024-01", 45, 12, 8],
+            ["2024-02", 52, 18, 6]
+        ],
+        "analysis_info": {...},
+        "chart_config": {...}
+    }
+    """
+    try:
+        # Валидация входных данных
+        if not filters.products:
+            raise HTTPException(
+                status_code=400,
+                detail="Необходимо указать минимум один продукт для анализа"
+            )
+
+        if len(filters.products) > 10:
+            raise HTTPException(
+                status_code=400,
+                detail="Максимальное количество продуктов для анализа: 10"
+            )
+
+        # Валидация периода
+        if filters.date_from >= filters.date_to:
+            raise HTTPException(
+                status_code=400,
+                detail="Дата начала должна быть меньше даты окончания"
+            )
+
+        period_days = (filters.date_to - filters.date_from).days
+        if period_days > 730:  # Не более 2 лет
+            raise HTTPException(
+                status_code=400,
+                detail="Период анализа не может превышать 2 года"
+            )
+
+        if period_days < 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Минимальный период анализа: 1 день"
+            )
+
+        # Валидация названий продуктов
+        for product in filters.products:
+            if len(product.name.strip()) < 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Название продукта '{product.name}' слишком короткое (минимум 2 символа)"
+                )
+
+        analysis_result = await dashboard_service.get_products_sentiment_analysis(filters)
+
+        return analysis_result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка анализа продуктов: {str(e)}"
+        )
+
+
+# Дополнительный эндпоинт для получения только данных графика (упрощенный)
+@router.post("/products-sentiment-trends-data", summary="Данные трендов продуктов для ECharts")
+async def get_products_sentiment_trends_data_endpoint(
+        filters: ProductsAnalysisFilters,
+        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
+):
+    """
+    Упрощенный эндпоинт, возвращающий только данные для ECharts без дополнительной аналитики.
+    """
+    try:
+        products_filters = [
+            {"name": product.name, "type": product.type}
+            for product in filters.products
+        ]
+
+        # Получаем данные напрямую из репозитория
+        chart_data = await analytics_repo.get_products_sentiment_trends_data(
+            products_filters=products_filters,
+            date_from=filters.date_from,
+            date_to=filters.date_to,
+            region_code=filters.region_code,
+            city=filters.city
+        )
+
+        return chart_data
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка получения данных трендов: {str(e)}"
+        )
+
+@router.get("/trends/echarts-data", summary="Данные для графика в формате ECharts")
+async def get_echarts_trends_data(
+        region_code: Optional[str] = Query(None, description="Код региона"),
+        city: Optional[str] = Query(None, description="Город"),
+        product: Optional[str] = Query(None, description="Продукт"),
+        date_from: Optional[datetime] = Query(None, description="Дата начала"),
+        date_to: Optional[datetime] = Query(None, description="Дата окончания"),
+        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
+):
+    """
+    Возвращает данные в точном формате ECharts:
+    """
+    try:
+        chart_data = await analytics_repo.get_reviews_trends_data_echarts_format(
+            region_code=region_code,
+            city=city,
+            product=product,
+            date_from=date_from,
+            date_to=date_to
+        )
+
+        return chart_data
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка получения данных: {str(e)}"
+        )
+
+
+@router.get("/trends/detailed-data", summary="Детальные данные трендов с разбивкой")
+async def get_detailed_trends_data(
+        region_code: Optional[str] = Query(None, description="Код региона"),
+        city: Optional[str] = Query(None, description="Город"),
+        product: Optional[str] = Query(None, description="Продукт"),
+        date_from: Optional[datetime] = Query(None, description="Дата начала"),
+        date_to: Optional[datetime] = Query(None, description="Дата окончания"),
+        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
+):
+    """
+    Получить детальные данные трендов с разбивкой по регионам/городам/продуктам
+    для более сложных графиков с несколькими сериями данных.
+    """
+    try:
+        detailed_data = await analytics_repo.get_reviews_trends_data(
+            region_code=region_code,
+            city=city,
+            product=product,
+            date_from=date_from,
+            date_to=date_to
+        )
+
+        return {
+            "data": detailed_data,
+            "filters": {
+                "region_code": region_code,
+                "city": city,
+                "product": product,
+                "date_from": date_from.isoformat() if date_from else None,
+                "date_to": date_to.isoformat() if date_to else None
+            },
+            "format": "echarts_compatible",
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка получения детальных данных: {str(e)}"
+        )
+
+
+@router.get("/gender-analysis", summary="Анализ отзывов по полу")
+async def get_gender_analysis(
+        region_code: Optional[str] = Query(None, description="Код региона"),
+        city: Optional[str] = Query(None, description="Название города"),
+        product: Optional[str] = Query(None, description="Название продукта"),
+        date_from: Optional[datetime] = Query(None, description="Дата начала периода"),
+        date_to: Optional[datetime] = Query(None, description="Дата окончания периода"),
+        dashboard_service: DashboardService = Depends(get_dashboard_service)
+):
+    """
+    API для анализа отзывов по полу (мужской/женский).
+
+    Возвращает:
+    - Распределение отзывов по полу
+    - Анализ настроений для каждого пола
+    - Средний рейтинг по полу
+    - Соотношения и проценты
+    - Инсайты и рекомендации
+    """
+    try:
+        analysis_result = await dashboard_service.get_gender_analysis_dashboard(
+            region_code=region_code,
+            city=city,
+            product=product,
+            date_from=date_from,
+            date_to=date_to
+        )
+        return analysis_result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения анализа по полу: {str(e)}")
+
+
+@router.get("/gender-distribution", summary="Распределение отзывов по полу в процентах")
+async def get_gender_distribution(
+        region_code: Optional[str] = Query(None, description="Код региона"),
+        city: Optional[str] = Query(None, description="Название города"),
+        product: Optional[str] = Query(None, description="Название продукта"),
+        date_from: Optional[datetime] = Query(None, description="Дата начала периода"),
+        date_to: Optional[datetime] = Query(None, description="Дата окончания периода"),
+        analytics_repo: ReviewAnalyticsRepository = Depends(get_analytics_repo)
+):
+    """
+    API для получения процентного распределения отзывов по полу.
+    Упрощенная версия без детального анализа настроений.
+    """
+    try:
+        # Используем существующий метод из репозитория
+        filters = ReviewFilters(
+            region_code=region_code,
+            city=city,
+            product=product,
+            date_from=date_from,
+            date_to=date_to
+        )
+
+        gender_data = await analytics_repo.get_gender_distribution(filters)
+        total_reviews = sum(gender_data.values())
+
+        # Преобразуем в проценты
+        gender_percentages = {}
+        for gender, count in gender_data.items():
+            percentage = (count / total_reviews * 100) if total_reviews > 0 else 0
+            gender_percentages[gender] = {
+                "count": count,
+                "percentage": round(percentage, 1)
+            }
+
+        return {
+            "gender_distribution": gender_percentages,
+            "total_reviews": total_reviews,
+            "filters_applied": filters.model_dump(exclude_none=True),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения распределения по полу: {str(e)}")
 
 # ========== ТЕПЛОВАЯ КАРТА SENTIMENT ==========
 

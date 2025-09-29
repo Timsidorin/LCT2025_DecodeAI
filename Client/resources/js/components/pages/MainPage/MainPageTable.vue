@@ -1,5 +1,5 @@
 <template>
-    <div v-if="loading">Загрузка...</div>
+    <BaseLoader v-if="loading"/>
     <q-table
         v-else-if="row.length > 0"
         :rows="row"
@@ -15,12 +15,21 @@
                     {{ props.row.product }}
                 </q-td>
                 <q-td key="positive_reviews" :props="props">
+                    <q-badge color="green">
+                        {{ props.row.positive_percentage }}%
+                    </q-badge>
                     {{ props.row.positive_reviews }}
                 </q-td>
                 <q-td key="neutral_reviews" :props="props">
+                    <q-badge color="amber">
+                        {{ props.row.neutral_percentage }}%
+                    </q-badge>
                     {{ props.row.neutral_reviews }}
                 </q-td>
                 <q-td key="negative_reviews" :props="props">
+                    <q-badge color="red">
+                        {{ props.row.negative_percentage }}%
+                    </q-badge>
                     {{ props.row.negative_reviews }}
                 </q-td>
             </q-tr>
@@ -33,8 +42,8 @@ import {useSelectDateStore} from "../../../store/SelectDate.js";
 import {onMounted, ref} from "vue";
 import {StatisticApi} from "../../../providers/StatisticApi.js";
 import {useRegionStore} from "../../../store/SelectRegion.js";
-import {useWatchRegion, useWatchStartDate, useWatchEndDate} from "../../../composables/watchChangesMapPage.js";
-
+import {useWatchRegion, useWatchStartDate, useWatchEndDate} from "../../../composables/watchChanges.js";
+import BaseLoader from "../../ui/BaseLoader.vue";
 
 const api = new StatisticApi();
 

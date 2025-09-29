@@ -18,6 +18,12 @@ class Configs(BaseSettings):
     DB_NAME: Optional[str] = Field(default="DecodeAI", env="DATABASE_NAME")
     DB_PASS: Optional[str] = Field(default="admin", env="DATABASE_PASSWORD")
 
+    # # Настройки мониторинга
+    # TELEGRAM_BOT_WEBHOOK_URL: str = None
+    # MONITORING_ENABLED: bool = True
+    # MONITORING_CHECK_INTERVAL: int = 10
+    # MONITORING_NOTIFICATION_THRESHOLD: int = 3
+
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
     )
