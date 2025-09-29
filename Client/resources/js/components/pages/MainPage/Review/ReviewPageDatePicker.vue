@@ -38,6 +38,27 @@
 </template>
 
 <script setup>
+import {useSelectDateStore} from "../../../../store/SelectDate.js";
+import {computed} from "vue";
+
+const store = useSelectDateStore();
+
+const startDate = computed({
+    get: () => store.startDate,
+    set: (value) => {
+        const formattedDate = value.replace(/\//g, '-');
+        store.setStartDate(formattedDate);
+    }
+});
+
+const endDate = computed({
+    get: () => store.endDate,
+    set: (value) => {
+        const formattedDate = value.replace(/\//g, '-');
+        store.setEndDate(formattedDate);
+    }
+});
+
 
 </script>
 
