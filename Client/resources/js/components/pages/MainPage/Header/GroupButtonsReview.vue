@@ -11,6 +11,7 @@
                 <q-select dense filled outlined v-model="city" :options="cityList" style="min-width: 200px"/>
             </div>
             <MainPageListProduct/>
+            <ReviewPageDatePicker/>
         </div>
     </div>
 </template>
@@ -21,6 +22,7 @@ import {useCityStore} from "../../../../store/SelectCity.js";
 import {RegionApi} from "../../../../providers/RegionApi.js";
 import {computed, onMounted, ref, watch} from "vue";
 import MainPageListProduct from "../MainPageListProduct.vue";
+import ReviewPageDatePicker from "../Review/ReviewPageDatePicker.vue";
 
 const storeRegion = useRegionStore();
 const storeCity = useCityStore();

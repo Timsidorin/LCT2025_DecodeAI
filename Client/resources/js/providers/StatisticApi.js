@@ -34,4 +34,20 @@ export class StatisticApi extends BaseApi{
             return e;
         }
     }
+
+    async getDynamicsOfChanges(dateStart, dateEnd, product, regionCode = null) {
+        try {
+            super.httpMethod = 'get';
+            super.sourceUrl = '/api/dashboard/trends/echarts-data';
+            super.params = {
+                date_from: dateStart,
+                date_to: dateEnd,
+                region_code: regionCode,
+                product: product
+            }
+            return super.createRequest();
+        } catch (e) {
+            return e;
+        }
+    }
 }
