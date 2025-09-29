@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from Integration_service.repository import ReviewAnalyticsRepository
-from Integration_service.schemas.processed_review import ReviewFilters, SourceAnalyticsFilters
+from Integration_service.schemas.processed_review import ReviewFilters, SourceAnalyticsFilters, ProductsAnalysisFilters
 
 
 class DashboardService:
@@ -218,6 +218,186 @@ class DashboardService:
 
         return dashboard_data
 
+    async def get_gender_analysis_dashboard(
+            self,
+            region_code: Optional[str] = None,
+            city: Optional[str] = None,
+            product: Optional[str] = None,
+            date_from: Optional[datetime] = None,
+            date_to: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        """Дашборд анализа по гендеру"""
+
+        # Получаем данные по гендеру
+        gender_data = await self.analytics_repo.get_gender_sentiment_analysis(
+            region_code=region_code,
+            city=city,
+            product=product,
+            date_from=date_from,
+            date_to=date_to
+        )
+
+        if not gender_data:
+            return {
+                "gender_analysis": [],
+                "summary": {
+                    "total_genders": 0,
+                    "total_reviews": 0,
+                    "dominant_gender": None,
+                    "gender_balance": "no_data"
+                },
+                "insights": [],
+                "timestamp": datetime.now().isoformat()
+            }
+
+        # Вычисляем общую статистику
+        total_reviews = sum(item["total_reviews"] for item in gender_data)
+        dominant_gender = max(gender_data, key=lambda x: x["total_reviews"])["gender"] if gender_data else None
+
+        # Определяем баланс по гендеру
+        if len(gender_data) == 2:
+            male_count = next((item["total_reviews"] for item in gender_data if item["gender_raw"] == "М"), 0)
+            female_count = next((item["total_reviews"] for item in gender_data if item["gender_raw"] == "Ж"), 0)
+
+            if abs(male_count - female_count) / total_reviews <= 0.1:  # Разница менее 10%
+                gender_balance = "balanced"
+            elif male_count > female_count:
+                gender_balance = "male_dominant"
+            else:
+                gender_balance = "female_dominant"
+        else:
+            gender_balance = "single_gender"
+
+        # Генерируем инсайты
+        insights = self._generate_gender_insights(gender_data, total_reviews)
+
+        return {
+            "gender_analysis": gender_data,
+            "summary": {
+                "total_genders": len(gender_data),
+                "total_reviews": total_reviews,
+                "dominant_gender": dominant_gender,
+                "gender_balance": gender_balance
+            },
+            "insights": insights,
+            "filters_applied": {
+                "region_code": region_code,
+                "city": city,
+                "product": product,
+                "date_from": date_from.isoformat() if date_from else None,
+                "date_to": date_to.isoformat() if date_to else None
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+
+    def _generate_gender_insights(self, gender_data: List[Dict], total_reviews: int) -> List[Dict[str, str]]:
+        """Генерация инсайтов по гендерному анализу"""
+        insights = []
+
+        if not gender_data:
+            return insights
+
+        # Наиболее активный пол
+        most_active = max(gender_data, key=lambda x: x["total_reviews"])
+        insights.append({
+            "type": "activity",
+            "message": f"Наиболее активный пол: {most_active['gender']} ({most_active['total_reviews']} отзывов, {most_active['total_reviews'] / total_reviews * 100:.1f}%)",
+            "priority": "info"
+        })
+
+        # Анализ настроений по полу
+        for item in gender_data:
+            if item["positive_ratio"] > 70:
+                insights.append({
+                    "type": "positive",
+                    "message": f"{item['gender']}: высокий уровень позитивных отзывов ({item['positive_ratio']:.1f}%)",
+                    "priority": "success"
+                })
+            elif item["negative_ratio"] > 50:
+                insights.append({
+                    "type": "negative",
+                    "message": f"{item['gender']}: преобладают негативные отзывы ({item['negative_ratio']:.1f}%)",
+                    "priority": "warning"
+                })
+
+        # Сравнение между полами, если есть оба
+        if len(gender_data) == 2:
+            male_data = next((item for item in gender_data if item["gender_raw"] == "М"), None)
+            female_data = next((item for item in gender_data if item["gender_raw"] == "Ж"), None)
+
+            if male_data and female_data:
+                if male_data["positive_ratio"] > female_data["positive_ratio"] + 10:
+                    insights.append({
+                        "type": "comparison",
+                        "message": f"Мужчины более позитивно настроены ({male_data['positive_ratio']:.1f}% vs {female_data['positive_ratio']:.1f}%)",
+                        "priority": "info"
+                    })
+                elif female_data["positive_ratio"] > male_data["positive_ratio"] + 10:
+                    insights.append({
+                        "type": "comparison",
+                        "message": f"Женщины более позитивно настроены ({female_data['positive_ratio']:.1f}% vs {male_data['positive_ratio']:.1f}%)",
+                        "priority": "info"
+                    })
+
+        return insights
+
+    async def get_products_sentiment_analysis(
+            self,
+            filters: ProductsAnalysisFilters
+    ) -> Dict[str, Any]:
+        """Получить анализ продуктов по типам отзывов"""
+
+        # Конвертируем Pydantic модели в словари (без mapping)
+        products_filters = [
+            {"name": product.name, "type": product.type}  # type уже positive/negative/neutral
+            for product in filters.products
+        ]
+
+        # Получаем данные из репозитория
+        chart_data = await self.analytics_repo.get_products_sentiment_trends_data(
+            products_filters=products_filters,
+            date_from=filters.date_from,
+            date_to=filters.date_to,
+            region_code=filters.region_code,
+            city=filters.city
+        )
+
+        # Дополнительная аналитика
+        total_products = len(filters.products)
+        date_range_days = (filters.date_to - filters.date_from).days
+
+        # Определяем преобладающий тип анализа
+        sentiment_types = [product.type for product in filters.products]
+        most_common_sentiment = max(set(sentiment_types), key=sentiment_types.count)
+
+        return {
+            "chart_data": chart_data,
+            "analysis_info": {
+                "total_products_analyzed": total_products,
+                "date_range_days": date_range_days,
+                "period": f"{filters.date_from.strftime('%d.%m.%Y')} - {filters.date_to.strftime('%d.%m.%Y')}",
+                "most_analyzed_sentiment": most_common_sentiment,
+                "products_breakdown": [
+                    {
+                        "product": product.name,
+                        "analysis_type": product.type
+                    }
+                    for product in filters.products
+                ]
+            },
+            "filters_applied": {
+                "region_code": filters.region_code,
+                "city": filters.city,
+                "products_count": total_products
+            },
+            "chart_config": {
+                "title": f"Анализ продуктов: {', '.join([p.name for p in filters.products[:3]])}{'...' if total_products > 3 else ''}",
+                "subtitle": f"Период: {filters.date_from.strftime('%m.%Y')} - {filters.date_to.strftime('%m.%Y')}",
+                "data_points": len(chart_data) - 1 if chart_data else 0
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+
 
     async def get_reviews_trends_chart_data(
             self,
@@ -286,6 +466,7 @@ class DashboardService:
             return f"до {date_to.strftime('%d.%m.%Y')}"
 
         return ""
+
 
     def _analyze_trends_data(self, chart_data: List[List]) -> Dict[str, Any]:
         """Анализ данных трендов для получения инсайтов"""
