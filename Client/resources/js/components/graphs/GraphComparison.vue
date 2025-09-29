@@ -1,7 +1,7 @@
 <template>
     <q-card class="custom-card">
         <q-card-section>
-            <div class="text-h6">{{ title }}</div>
+            <div class="text-h6">Сравнение продуктов</div>
         </q-card-section>
         <q-card-section class="scroll-content">
             <div class="q-pa-md">
@@ -38,9 +38,29 @@
 
 <script setup>
 import GraphComparisonModal from "../modals/GraphComparisonModal.vue";
-import {computed, ref} from "vue";
+import {onMounted, ref, computed} from "vue";
+import {ProductApi} from "../../providers/ProductApi.js";
 
-const props = defineProps(['title', 'list-product']);
+const api = new ProductApi();
+const listProduct = ref([]);
+async function getListProduct() {
+    try {
+        let response = await api.getListProduct();
+        listProduct.value = response.data.products_analysis.map((element) => {
+            return {
+                label: element.product,
+                value: element.product
+            }
+        });
+    } catch (e) {
+        return e;
+    }
+}
+
+onMounted(async () => {
+    await getListProduct();
+});
+
 const selectedProduct = ref([]);
 const statusModel = ref(false);
 const typeComp = [
@@ -65,10 +85,11 @@ const disabledStatus = computed(() => {
 
 <style scoped>
 .custom-card {
+    width: 100%;
     border-radius: 10px;
-    max-height: 400px;
     display: flex;
     flex-direction: column;
+    height: 600px;
 }
 
 .scroll-content {

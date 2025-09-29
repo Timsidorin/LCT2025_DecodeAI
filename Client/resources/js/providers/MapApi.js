@@ -8,7 +8,7 @@ export class MapApi extends BaseApi{
     async coloringMap(type) {
         try {
             super.httpMethod = 'get';
-            super.sourceUrl = '/api/dashboard/regions/sentiment-heatmap?min_reviews=0';
+            super.sourceUrl = '/api/dashboard/sentiment/heatmap';
             super.params = {sentiment_filter: type}
             return super.createRequest();
         } catch (e) {

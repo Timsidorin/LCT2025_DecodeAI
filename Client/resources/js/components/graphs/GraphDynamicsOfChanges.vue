@@ -13,7 +13,7 @@
 import { StatisticApi } from "../../providers/StatisticApi.js";
 import { useSelectDateStore } from "../../store/SelectDate.js";
 import { useProductStore } from "../../store/SelectProduct.js"
-import { useWatchProduct, useWatchRegion } from "../../composables/watchChanges.js";
+import { useWatchProduct, useWatchRegion, useWatchEndDate, useWatchStartDate } from "../../composables/watchChanges.js";
 import { useRegionStore } from "../../store/SelectRegion.js";
 import { onMounted, ref, onUnmounted, nextTick } from "vue";
 import * as echarts from 'echarts';
@@ -61,10 +61,6 @@ function run(_rawData) {
                 source: _rawData
             }
         ],
-        title: {
-            text: 'Тренд отзывов по месяцам',
-            left: 'center'
-        },
         tooltip: {
             trigger: 'axis'
         },
@@ -158,6 +154,8 @@ async function getData() {
 // Следим за изменениями продукта и региона
 useWatchProduct(productStore, getData);
 useWatchRegion(regionStore, getData);
+useWatchEndDate(dateStore, getData);
+useWatchStartDate(dateStore, getData);
 
 onMounted(async () => {
     // Инициализируем график после монтирования компонента

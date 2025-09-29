@@ -8,7 +8,7 @@ export class StatisticApi extends BaseApi{
     async getTableStatistic(dateStart, dateEnd, regionCode = null) {
         try {
             super.httpMethod = 'get';
-            super.sourceUrl = '/api/dashboard/regions-products/statistics';
+            super.sourceUrl = '/api/dashboard/regions/products/statistics';
             super.params = {
                 date_from: dateStart,
                 date_to: dateEnd,
@@ -45,6 +45,16 @@ export class StatisticApi extends BaseApi{
                 region_code: regionCode,
                 product: product
             }
+            return super.createRequest();
+        } catch (e) {
+            return e;
+        }
+    }
+
+    async getBasicSummary() {
+        try {
+            super.httpMethod = 'get';
+            super.sourceUrl = '/api/dashboard/summary';
             return super.createRequest();
         } catch (e) {
             return e;

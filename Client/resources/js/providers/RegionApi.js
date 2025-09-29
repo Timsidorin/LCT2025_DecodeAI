@@ -8,7 +8,7 @@ export class RegionApi extends BaseApi{
     async getListRegion(includeCities) {
         try {
             super.httpMethod = 'get';
-            super.sourceUrl = '/api/dashboard/regions';
+            super.sourceUrl = '/api/dashboard/regions/';
             super.params = {
                 include_cities: includeCities,
             }

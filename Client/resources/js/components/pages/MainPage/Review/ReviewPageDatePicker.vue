@@ -20,11 +20,11 @@
 <div class="col-auto row q-col-gutter-md q-ml-xl">
     <div class="col-auto">
         <span class="text-subtitle1">Конец периода</span>
-        <q-input dense filled v-model="startDate" mask="date" style="min-width: 200px">
+        <q-input dense filled v-model="endDate" mask="date" style="min-width: 200px">
             <template v-slot:append>
                 <q-icon name="event" class="cursor-pointer">
                     <q-popup-proxy cover transition-show="scale" transition-hide="scale">
-                        <q-date v-model="startDate">
+                        <q-date v-model="endDate">
                             <div class="row items-center justify-end">
                                 <q-btn v-close-popup label="Close" color="primary" flat/>
                             </div>
