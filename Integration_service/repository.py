@@ -309,6 +309,83 @@ class ReviewAnalyticsRepository:
 
         return chart_data
 
+    # Добавляем этот метод в конец класса ReviewAnalyticsRepository в repository.py
+
+    async def get_product_sentiment_by_months(
+            self,
+            filters: Optional[ReviewFilters] = None,
+            limit_products: int = 10,
+            min_reviews_per_month: int = 5
+    ) -> List[Dict[str, Any]]:
+        """Получить sentiment по продуктам и месяцам для матричного графика"""
+
+        # Создаем alias для to_char функции
+        month_alias = func.to_char(Review.datetime_review, 'YYYY-MM').label('month')
+
+        query = select(
+            Review.product,
+            month_alias,
+            func.count(Review.uuid).label('total_reviews'),
+            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_count'),
+            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_count'),
+            func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral_count')
+        ).group_by(
+            Review.product,
+            month_alias  # Используем alias вместо повторной функции
+        ).having(
+            func.count(Review.uuid) >= min_reviews_per_month
+        ).order_by(
+            Review.product,
+            month_alias  # Используем alias в ORDER BY тоже
+        )
+
+        # Применяем фильтры используя существующий метод
+        if filters:
+            query = self._apply_filters(query, filters)
+
+        # Получаем топ продуктов отдельным запросом
+        top_products_query = select(Review.product).group_by(Review.product).order_by(
+            func.count(Review.uuid).desc()
+        ).limit(limit_products)
+
+        if filters:
+            top_products_query = self._apply_filters(top_products_query, filters)
+
+        top_products_result = await self.session.execute(top_products_query)
+        top_products = [row[0] for row in top_products_result.fetchall()]
+
+        if not top_products:
+            return []
+
+        # Фильтруем основной запрос по топ продуктам
+        query = query.where(Review.product.in_(top_products))
+
+        result = await self.session.execute(query)
+        rows = result.fetchall()
+
+        # Обрабатываем результаты
+        data = []
+        for row in rows:
+            total = row.total_reviews or 0
+            positive = row.positive_count or 0
+            negative = row.negative_count or 0
+            neutral = row.neutral_count or 0
+
+            if total > 0:
+                data.append({
+                    "product": row.product,
+                    "month": row.month,  # Теперь доступен через alias
+                    "total_reviews": total,
+                    "positive_count": positive,
+                    "negative_count": negative,
+                    "neutral_count": neutral,
+                    "positive_percentage": round((positive / total) * 100, 1),
+                    "negative_percentage": round((negative / total) * 100, 1),
+                    "neutral_percentage": round((neutral / total) * 100, 1)
+                })
+
+        return data
+
     async def get_reviews_trends_data_echarts_format(
             self,
             region_code: Optional[str] = None,
