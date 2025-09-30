@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from Auth_service.database import get_async_session
+from Integration_service.core.database import get_async_session
 from Integration_service.repository import ReviewAnalyticsRepository
 from Integration_service.services.DashBoardService import DashboardService
 from Integration_service.schemas.processed_review import ReviewFilters, ProductsAnalysisFilters
