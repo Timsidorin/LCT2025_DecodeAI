@@ -60,4 +60,14 @@ export class StatisticApi extends BaseApi{
             return e;
         }
     }
+
+    async getDataMatrix(){
+        try {
+            super.httpMethod = 'get';
+            super.sourceUrl = '/api/matrix/product-sentiment-matrix';
+            return super.createRequest();
+        } catch (e) {
+            return e;
+        }
+    }
 }

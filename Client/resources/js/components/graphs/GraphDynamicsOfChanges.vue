@@ -4,7 +4,7 @@
             <div class="text-h6">Динамика отзывов по продукту</div>
         </q-card-section>
         <q-card-section>
-            <div style="height: 300px" ref="productGraphDiv"/>
+            <div style="height: 500px" ref="productGraphDiv"/>
         </q-card-section>
     </q-card>
 </template>

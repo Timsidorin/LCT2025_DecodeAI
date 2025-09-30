@@ -24,17 +24,17 @@ async function getBasicSummary() {
             {
                 value: response.data.overview.sentiment_distribution.positive,
                 name: 'Положительные',
-                itemStyle: {color: '#44cc32'}
+                itemStyle: {color: 'rgb(109,216,109)'}
             },
             {
                 value: response.data.overview.sentiment_distribution.negative,
                 name: 'Отрицательные',
-                itemStyle: {color: '#ef3d3d'}
+                itemStyle: {color: 'rgb(223 43 79)'}
             },
             {
                 value: response.data.overview.sentiment_distribution.neutral,
                 name: 'Нейтральные',
-                itemStyle: {color: '#ffde00'}
+                itemStyle: {color: 'rgb(255 219 25)'}
             }
         ];
         review24Hours.value = {growth_metrics: response.data.overview.growth_metrics, gender_distribution: response.data.overview.gender_distribution};
