@@ -37,7 +37,7 @@ kafka_router = KafkaRouter(
 
 
 def sync_ml_analysis_optimized(data):
-    """Оптимизированный subprocess вызов ML модели"""
+    """вызов ML модели"""
     input_file_path = None
     output_file_path = None
 
@@ -218,11 +218,11 @@ async def process_raw_review(msg: RawReviewMessage):
                         )
                         saved_count += 1
                     else:
-                        logger.error(f"❌ Ошибка сохранения отзыва {idx + 1} в БД")
+                        logger.error(f"Ошибка сохранения отзыва {idx + 1} в БД")
                         error_count += 1
 
                 except Exception as e:
-                    logger.error(f"❌ Ошибка обработки отзыва {idx + 1}: {str(e)}")
+                    logger.error(f"Ошибка обработки отзыва {idx + 1}: {str(e)}")
                     error_count += 1
                     continue
 
@@ -248,7 +248,7 @@ async def lifespan(app: FastAPI):
         logger.info("Kafka подключен, слушаем топик raw_reviews")
         logger.info("ML Processing Service готов к работе")
     except Exception as e:
-        logger.error(f"❌ Ошибка подключения к Kafka: {e}")
+        logger.error(f"Ошибка подключения к Kafka: {e}")
 
     try:
         yield
