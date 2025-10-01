@@ -32,6 +32,12 @@ function initGraph() {
         yAxis: {
             type: 'value'
         },
+        toolbox: {
+            show: true,
+            feature: {
+                saveAsImage: {title: 'Скачать файл'}
+            }
+        },
         series: props.series
     };
     option && chart.setOption(option);

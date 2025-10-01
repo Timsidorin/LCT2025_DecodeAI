@@ -1,8 +1,8 @@
 <template>
     <div class="row q-gutter-x-xl no-wrap">
+        <GraphComparison class="col-4"/>
         <TotalReviews :chart-data="totalReview" v-if="totalReview" class="col-4"/>
         <GrowthMetrics :data="review24Hours" v-if="review24Hours" class="col-4"/>
-        <GraphComparison class="col-4"/>
     </div>
 </template>
 

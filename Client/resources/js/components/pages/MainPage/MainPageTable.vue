@@ -18,19 +18,25 @@
                     <q-badge color="green">
                         {{ props.row.positive_percentage }}%
                     </q-badge>
-                    {{ props.row.positive_reviews }}
+                    <q-badge class="q-ml-xs" color="primary">
+                        {{ props.row.positive_reviews }}
+                    </q-badge>
                 </q-td>
                 <q-td key="neutral_reviews" :props="props">
                     <q-badge color="amber">
                         {{ props.row.neutral_percentage }}%
                     </q-badge>
-                    {{ props.row.neutral_reviews }}
+                    <q-badge class="q-ml-xs" color="primary">
+                        {{ props.row.neutral_reviews }}
+                    </q-badge>
                 </q-td>
                 <q-td key="negative_reviews" :props="props">
                     <q-badge color="red">
                         {{ props.row.negative_percentage }}%
                     </q-badge>
-                    {{ props.row.negative_reviews }}
+                    <q-badge class="q-ml-xs" color="primary">
+                        {{ props.row.negative_reviews }}
+                    </q-badge>
                 </q-td>
             </q-tr>
         </template>
