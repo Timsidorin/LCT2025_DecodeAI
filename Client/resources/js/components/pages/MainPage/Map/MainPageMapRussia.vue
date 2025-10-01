@@ -16,7 +16,7 @@
     />
     <q-card style="border-radius: 10px">
         <q-card-section>
-            <div class="text-h6">Теповая карта по отзывам</div>
+            <div class="text-h6">Тепловая карта по отзывам</div>
         </q-card-section>
         <q-card-section>
             <div id="rf-map" ref="rfMap" class="rf-map">
@@ -341,7 +341,7 @@ async function getData() {
         coloringMap(result);
         loadingColor.value = false;
     } catch (e) {
-        console.log(e)
+
         return e;
     }
 }
