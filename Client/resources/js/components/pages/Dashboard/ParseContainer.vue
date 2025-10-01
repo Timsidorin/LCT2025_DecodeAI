@@ -20,6 +20,7 @@ const body = ref('body');
 const items = ref([]);
 
 function parse(raw) {
+    items.value = [];
     raw.elements.forEach((element) => {
        let domElement = JSON.parse(element.data);
         if (domElement[0] && domElement[0].type === 'h4' ) {
@@ -38,7 +39,6 @@ watch(tempate, (n, o) => {
     }
 });
 </script>
-
 
 <style scoped>
 
