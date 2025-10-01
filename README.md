@@ -1,7 +1,7 @@
 # LCT2025_DecodeAI
 
 
-[Подробная документация проекта](https://decode2024.yonote.ru/share/06f7d2e3-153a-4aee-b137-0d9d7ed70f36)
+[Подробная документация проекта]([https://decode2024.yonote.ru/share/06f7d2e3-153a-4aee-b137-0d9d7ed70f36](https://decodeai.yonote.ru/share/1cbf8e09-f53c-4211-acd0-742c9c5edb75))
 
 ## Backend 
 - Python 3.10
