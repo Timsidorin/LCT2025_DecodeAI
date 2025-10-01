@@ -4,6 +4,8 @@ import json
 import os
 import subprocess
 from datetime import datetime
+import threading
+import uuid
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +27,8 @@ class RawReviewMessage(BaseModel):
     data: list[dict] = Field(..., description="Список отзывов")
 
 
+ML_MODEL_LOCK = threading.Lock()
+
 kafka_router = KafkaRouter(
     configs.BOOTSTRAP_SERVICE,
     schema_url="/asyncapi",
@@ -32,41 +36,50 @@ kafka_router = KafkaRouter(
 )
 
 
-def sync_ml_analysis(data):
-    """ вызов ML модели"""
+def sync_ml_analysis_optimized(data):
+    """вызов ML модели"""
     input_file_path = None
     output_file_path = None
+
     try:
+        temp_id = str(uuid.uuid4())[:8]
         root_dir = os.path.abspath(os.path.join(os.getcwd(), ".."))
-        input_file_path = os.path.join(root_dir, "api_input.json")
-        output_file_path = os.path.join(root_dir, "api_output.json")
+
+        input_file_path = os.path.join(root_dir, f"api_input_{temp_id}.json")
+        output_file_path = os.path.join(root_dir, f"api_output_{temp_id}.json")
 
         input_data = {"data": data}
         with open(input_file_path, 'w', encoding='utf-8') as f:
             json.dump(input_data, f, ensure_ascii=False, indent=2)
 
         command = [
-            "python",
+            "python", "-u",
             "analyze_single_review.py",
-            "--input", "api_input.json",
-            "--output", "api_output.json",
-            "--workers", "8",
-            "--batch-size", "8"
+            "--input", f"api_input_{temp_id}.json",
+            "--output", f"api_output_{temp_id}.json",
+            "--workers", "4",
+            "--batch-size", "4"
         ]
+
+        start_time = datetime.now()
 
         result = subprocess.run(
             command,
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=120,
             encoding='utf-8',
             cwd=root_dir
         )
+
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
 
         if result.returncode != 0:
             error_msg = f"ML модель завершилась с кодом {result.returncode}"
             if result.stderr:
                 error_msg += f". STDERR: {result.stderr}"
+            logger.error(error_msg)
             raise Exception(error_msg)
 
         if not os.path.exists(output_file_path):
@@ -78,6 +91,8 @@ def sync_ml_analysis(data):
         with open(output_file_path, 'r', encoding='utf-8') as f:
             ml_result = json.load(f)
 
+        logger.info(f"ML результат получен, размер: {len(ml_result) if isinstance(ml_result, list) else 1}")
+
         if isinstance(ml_result, dict) and "predictions" in ml_result:
             return ml_result["predictions"]
         elif isinstance(ml_result, list):
@@ -85,54 +100,66 @@ def sync_ml_analysis(data):
         else:
             return [ml_result] if ml_result else []
 
+    except subprocess.TimeoutExpired:
+        logger.error(f"ML модель превысила timeout {120} секунд")
+        raise Exception("ML модель превысила время выполнения")
+    except Exception as e:
+        logger.error(f"Ошибка в ML анализе: {str(e)}")
+        raise
     finally:
         for file_path in [input_file_path, output_file_path]:
             if file_path and os.path.exists(file_path):
                 try:
                     os.unlink(file_path)
-                except OSError:
-                    pass
+                    logger.debug(f"🗑Удален временный файл: {file_path}")
+                except OSError as e:
+                    logger.warning(f"Не удалось удалить файл {file_path}: {e}")
 
 
 async def analyze_sentiment_and_topics_batch(reviews_data: list) -> list:
-    """Пакетный анализ отзывов через ML модель"""
+    """Пакетный анализ отзывов через оптимизированную ML модель"""
     try:
+        total_start_time = datetime.now()
+        logger.info(f"🤖 Начало ML анализа для {len(reviews_data)} отзывов...")
+
         root_dir = os.path.abspath(os.path.join(os.getcwd(), ".."))
         script_path = os.path.join(root_dir, "analyze_single_review.py")
 
         if not os.path.exists(script_path):
             raise FileNotFoundError(f"ML скрипт не найден: {script_path}")
-        result = sync_ml_analysis(reviews_data)
+
+        with ML_MODEL_LOCK:
+            result = sync_ml_analysis_optimized(reviews_data)
+
+        total_end_time = datetime.now()
+        total_duration = (total_end_time - total_start_time).total_seconds()
+
+        logger.info(f"ML анализ полностью завершен за {total_duration:.2f} секунд")
+        logger.info(f"Скорость обработки: {len(reviews_data) / total_duration:.2f} отзывов/сек")
+
         return result
 
     except Exception as e:
-        logger.error(f"Ошибка в ML анализе: {str(e)}")
+        logger.error(f"Критическая ошибка в ML анализе: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+def sync_ml_analysis(data):
+    return sync_ml_analysis_optimized(data)
 
 
 def process_ml_result(review_data: dict, ml_prediction: dict) -> dict:
     """
     Обработка результата ML и подготовка данных для БД
-
-    ML модель возвращает:
-    {"id": 1, "topics": ["Обслуживание", "Мобильное приложение"],
-     "sentiments": ["положительно", "отрицательно"]}
-
-    В БД сохраняется:
-    rating: "positive"/"negative"/"neutral"
-    product: "Обслуживание"
     """
     topics = ml_prediction.get("topics", [])
     sentiments = ml_prediction.get("sentiments", [])
+
+
     product = topics[0] if topics else None
 
-    sentiment_to_english = {
-        "отрицательно": "negative",
-        "положительно": "positive",
-        "нейтрально": "neutral"
-    }
+    rating = "neutral"  # По умолчанию
 
-    rating = "neutral"
     if "отрицательно" in sentiments:
         rating = "negative"
     elif all(s == "положительно" for s in sentiments) and len(sentiments) > 0:
@@ -157,25 +184,11 @@ def process_ml_result(review_data: dict, ml_prediction: dict) -> dict:
 async def process_raw_review(msg: RawReviewMessage):
     """
     Обработчик сообщений из Kafka топика raw_reviews
-
-    Формат входящего сообщения:
-    {
-        "data": [
-            {
-                "id": "uuid",
-                "text": "текст отзыва",
-                "gender": "М",
-                "source": "banki.ru",
-                "city": "Москва",
-                "region": "г Москва",
-                "region_code": "RU-MOW",
-                "datetime_review": "2025-10-01T20:00:00"
-            }
-        ]
-    }
     """
     try:
-        logger.info(f"📨 Получено сообщение из Kafka: {len(msg.data)} отзывов")
+        request_start_time = datetime.now()
+        logger.info(f"Получено сообщение из Kafka: {len(msg.data)} отзывов")
+
         reviews_for_ml = []
         for idx, review in enumerate(msg.data):
             reviews_for_ml.append({
@@ -183,35 +196,43 @@ async def process_raw_review(msg: RawReviewMessage):
                 "text": review["text"]
             })
 
-        logger.info(f"🤖 Отправка в ML модель...")
         ml_results = await analyze_sentiment_and_topics_batch(reviews_for_ml)
-        logger.info(f"ML обработка завершена: {len(ml_results)} результатов")
 
+        db_start_time = datetime.now()
         async for session in get_async_session():
             repo = ProcessedReviewRepository(session)
+            saved_count = 0
+            error_count = 0
 
             for idx, review_data in enumerate(msg.data):
                 try:
                     ml_prediction = ml_results[idx] if idx < len(ml_results) else {}
                     processed_data = process_ml_result(review_data, ml_prediction)
+
                     result = await repo.add_processed_review(**processed_data)
 
                     if result:
                         logger.info(
-                            f"Отзыв сохранен в processed_reviews: {result.uuid} "
+                            f"Отзыв {idx + 1}/{len(msg.data)} сохранен: {result.uuid} "
                             f"(тональность: {result.rating}, продукт: {result.product})"
                         )
+                        saved_count += 1
                     else:
-                        logger.error(f"❌ Ошибка сохранения отзыва в БД")
+                        logger.error(f"Ошибка сохранения отзыва {idx + 1} в БД")
+                        error_count += 1
 
                 except Exception as e:
-                    logger.error(f"❌ Ошибка обработки отзыва {idx}: {str(e)}")
+                    logger.error(f"Ошибка обработки отзыва {idx + 1}: {str(e)}")
+                    error_count += 1
                     continue
 
             break
 
-        logger.info(f"Обработка пакета завершена успешно")
+        db_end_time = datetime.now()
+        db_duration = (db_end_time - db_start_time).total_seconds()
 
+        request_end_time = datetime.now()
+        total_duration = (request_end_time - request_start_time).total_seconds()
     except Exception as e:
         logger.error(f"Критическая ошибка при обработке сообщения: {str(e)}")
         import traceback
@@ -224,23 +245,22 @@ async def lifespan(app: FastAPI):
     """Управление жизненным циклом приложения"""
     try:
         await kafka_router.broker.start()
-        logger.info("✅ Kafka подключен, слушаем топик raw_reviews")
+        logger.info("Kafka подключен, слушаем топик raw_reviews")
+        logger.info("ML Processing Service готов к работе")
     except Exception as e:
-        logger.error(f"❌ Ошибка подключения к Kafka: {e}")
+        logger.error(f"Ошибка подключения к Kafka: {e}")
 
     try:
         yield
     finally:
         try:
             await kafka_router.broker.close()
-            logger.info("✅ Kafka отключен")
         except Exception as e:
-            logger.error(f"❌ Ошибка отключения Kafka: {e}")
+            logger.error(f"Ошибка отключения Kafka: {e}")
 
 
 app = FastAPI(
     title=configs.PROJECT_NAME,
-    description="ML Processing Service - обработка отзывов через ML модель",
     lifespan=lifespan
 )
 
@@ -258,10 +278,10 @@ app.include_router(kafka_router)
 @app.post("/predict", response_model=PredictResponse, description="Ручной прогон через ML модель")
 async def predict_sentiment_and_topics(request: PredictRequest):
     """
-    Endpoint для ручного тестирования ML модели
-    Не используется в основном потоке обработки
     """
     try:
+        request_start_time = datetime.now()
+
         if len(request.data) == 0:
             raise HTTPException(status_code=400, detail="Список отзывов не может быть пустым")
 
@@ -275,7 +295,6 @@ async def predict_sentiment_and_topics(request: PredictRequest):
 
         if not reviews_data:
             raise HTTPException(status_code=400, detail="Не найдено отзывов с непустым текстом")
-
         ml_results = await analyze_sentiment_and_topics_batch(reviews_data)
 
         predictions = []
@@ -294,15 +313,19 @@ async def predict_sentiment_and_topics(request: PredictRequest):
             )
             predictions.append(prediction)
 
+        request_end_time = datetime.now()
+        total_duration = (request_end_time - request_start_time).total_seconds()
+
         return PredictResponse(predictions=predictions)
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка в endpoint: {str(e)}")
+        logger.error(f"Ошибка в API endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {str(e)}")
 
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host=configs.HOST, port=configs.PORT, reload=True)
+
