@@ -1,141 +1,176 @@
 <template>
     <q-card>
         <q-card-section>
+            <h6 class="q-ma-none">Топ-3 региона по количеству отзывов</h6>
+        </q-card-section>
+        <q-card-section>
             <div ref="chartContainer" style="width: 100%; height: 400px;"></div>
         </q-card-section>
     </q-card>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import * as echarts from 'echarts';
+import { MapApi } from "../../providers/MapApi.js";
+
+const api = new MapApi();
+const data = ref(null);
+
+async function getData() {
+    try {
+        let response = await api.coloringMap('positive');
+        data.value = response.data.regions;
+    } catch (e) {
+        console.error('Error fetching data:', e);
+        return e;
+    }
+}
 
 const chartContainer = ref(null);
 let myChart = null;
-
-// Используем Unicode символы которые соответствуют Quasar иконкам
-const weatherIcons = {
-    Sunny: '☀️',
-    Cloudy: '☁️',
-    Showers: '🌧️'
-};
 
 const seriesLabel = {
     show: true
 };
 
-const option = {
-    title: {
-        text: 'Weather Statistics'
-    },
-    tooltip: {
-        trigger: 'axis',
-        axisPointer: {
-            type: 'shadow'
-        }
-    },
-    legend: {
-        data: ['City Alpha', 'City Beta', 'City Gamma']
-    },
-    grid: {
-        left: 100
-    },
-    toolbox: {
-        show: true,
-        feature: {
-            saveAsImage: {}
-        }
-    },
-    xAxis: {
-        type: 'value',
-        name: 'Days',
-        axisLabel: {
-            formatter: '{value}'
-        }
-    },
-    yAxis: {
-        type: 'category',
-        inverse: true,
-        data: ['Sunny', 'Cloudy', 'Showers'],
-        axisLabel: {
-            formatter: function (value) {
-                return `${weatherIcons[value]}\n${value}`;
+const initChart = () => {
+    if (!chartContainer.value || !data.value) return;
+
+    myChart = echarts.init(chartContainer.value);
+
+    // Сортируем регионы по total_reviews (по убыванию) и берем топ-3
+    const sortedRegions = [...data.value].sort((a, b) => b.total_reviews - a.total_reviews);
+    const displayRegions = sortedRegions.slice(0, 3);
+    const regionNames = displayRegions.map(region => region.region_name);
+
+
+    const option = {
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: {
+                type: 'shadow'
             },
-            margin: 20,
-            rich: {
-                value: {
-                    lineHeight: 30,
-                    align: 'center'
+            formatter: function (params) {
+                let result = `<strong>${params[0].axisValue}</strong><br/>`;
+                params.forEach(param => {
+                    const region = displayRegions.find(r => r.region_name === param.seriesName);
+                    const total = region ? region.total_reviews : 0;
+                    const percentage = total > 0 ? ((param.value / total) * 100).toFixed(1) : 0;
+                    result += `${param.marker} ${param.seriesName}: ${param.value} (${percentage}%)<br/>`;
+                });
+                return result;
+            }
+        },
+        legend: {
+            data: regionNames
+        },
+        grid: {
+            left: 100
+        },
+        toolbox: {
+            show: true,
+            feature: {
+                saveAsImage: {}
+            }
+        },
+        xAxis: {
+            type: 'value',
+            name: 'Количество отзывов',
+            axisLabel: {
+                formatter: '{value}'
+            }
+        },
+        yAxis: {
+            type: 'category',
+            inverse: true,
+            data: ['Положительные', 'Отрицательные', 'Нейтральные'],
+            axisLabel: {
+                formatter: function (value) {
+                    const icons = {
+                        'Положительные': '👍',
+                        'Отрицательные': '👎',
+                        'Нейтральные': '😐'
+                    };
+                    return `${icons[value]}\n${value}`;
+                },
+                margin: 20,
+                rich: {
+                    value: {
+                        lineHeight: 30,
+                        align: 'center'
+                    }
                 }
             }
-        }
-    },
-    series: [
-        {
-            name: 'City Alpha',
-            type: 'bar',
-            data: [165, 170, 30],
-            label: seriesLabel,
-            markPoint: {
-                symbolSize: 1,
-                symbolOffset: [0, '50%'],
+        },
+        series: displayRegions.map((region, index) => {
+            const colors = ['#5470c6', '#91cc75', '#fac858']; // Цвета для разных регионов
+
+            return {
+                name: region.region_name,
+                type: 'bar',
+                data: [
+                    region.positive_reviews,
+                    region.negative_reviews,
+                    region.neutral_reviews
+                ],
                 label: {
-                    formatter: '{a|{a}\n}{b|{b} }{c|{c}}',
-                    backgroundColor: 'rgb(242,242,242)',
-                    borderColor: '#aaa',
-                    borderWidth: 1,
-                    borderRadius: 4,
-                    padding: [4, 10],
-                    lineHeight: 26,
-                    position: 'right',
-                    distance: 20,
-                    rich: {
-                        a: {
-                            align: 'center',
-                            color: '#fff',
-                            fontSize: 18,
-                            textShadowBlur: 2,
-                            textShadowColor: '#000',
-                            textShadowOffsetX: 0,
-                            textShadowOffsetY: 1,
-                            textBorderColor: '#333',
-                            textBorderWidth: 2
-                        },
-                        b: {
-                            color: '#333'
-                        },
-                        c: {
-                            color: '#ff8811',
-                            textBorderColor: '#000',
-                            textBorderWidth: 1,
-                            fontSize: 22
-                        }
+                    ...seriesLabel,
+                    formatter: function(params) {
+                        // Показываем проценты в подписях
+                        const total = region.total_reviews;
+                        const percentage = total > 0 ? ((params.value / total) * 100).toFixed(1) : 0;
+                        return `${params.value}\n(${percentage}%)`;
                     }
                 },
-                data: [
-                    { type: 'max', name: 'max days: ' },
-                    { type: 'min', name: 'min days: ' }
-                ]
-            }
-        },
-        {
-            name: 'City Beta',
-            type: 'bar',
-            label: seriesLabel,
-            data: [150, 105, 110]
-        },
-        {
-            name: 'City Gamma',
-            type: 'bar',
-            label: seriesLabel,
-            data: [220, 82, 63]
-        }
-    ]
-};
+                itemStyle: {
+                    color: colors[index]
+                },
+                markPoint: {
+                    symbolSize: 1,
+                    symbolOffset: [0, '50%'],
+                    label: {
+                        formatter: '{a|{a}\n}{b|{b} }{c|{c}}',
+                        backgroundColor: 'rgb(242,242,242)',
+                        borderColor: '#aaa',
+                        borderWidth: 1,
+                        borderRadius: 4,
+                        padding: [4, 10],
+                        lineHeight: 26,
+                        position: 'right',
+                        distance: 20,
+                        rich: {
+                            a: {
+                                align: 'center',
+                                color: '#fff',
+                                fontSize: 18,
+                                textShadowBlur: 2,
+                                textShadowColor: '#000',
+                                textShadowOffsetX: 0,
+                                textShadowOffsetY: 1,
+                                textBorderColor: '#333',
+                                textBorderWidth: 2
+                            },
+                            b: {
+                                color: '#333'
+                            },
+                            c: {
+                                color: '#ff8811',
+                                textBorderColor: '#000',
+                                textBorderWidth: 1,
+                                fontSize: 22
+                            }
+                        }
+                    },
+                    data: [
+                        { type: 'max', name: 'макс: ' },
+                        { type: 'min', name: 'мин: ' }
+                    ]
+                }
+            };
+        })
+    };
 
-const initChart = () => {
-    if (!chartContainer.value) return;
-    myChart = echarts.init(chartContainer.value);
     myChart.setOption(option);
 };
 
@@ -143,8 +178,15 @@ const resizeChart = () => {
     myChart?.resize();
 };
 
-onMounted(() => {
-    initChart();
+// Следим за изменением данных
+watch(data, () => {
+    if (data.value) {
+        initChart();
+    }
+});
+
+onMounted(async () => {
+    await getData();
     window.addEventListener('resize', resizeChart);
 });
 

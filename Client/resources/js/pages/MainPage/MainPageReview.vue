@@ -1,12 +1,13 @@
 <template>
     <div class="column q-gutter-xl">
-        <BasicSummary/>
         <div class="row q-gutter-x-xl">
             <GraphDynamicsOfChanges class="col"/>
             <GraphTonalityForAllProducts class="col"/>
-        </div>
-        <div class="row q-gutter-x-xl">
             <MainPageTable class="col"/>
+        </div>
+        <BasicSummary/>
+        <div class="row q-gutter-x-xl">
+            <PreferencesGender/>
         </div>
     </div>
 </template>
@@ -16,6 +17,7 @@ import GraphDynamicsOfChanges from "../../components/graphs/GraphDynamicsOfChang
 import GraphTonalityForAllProducts from "../../components/graphs/GraphTonalityForAllProducts.vue";
 import MainPageTable from "../../components/pages/MainPage/MainPageTable.vue";
 import BasicSummary from "../../components/graphs/BasicSummary.vue";
+import PreferencesGender from "../../components/graphs/PreferencesGender.vue";
 </script>
 
 <style scoped>

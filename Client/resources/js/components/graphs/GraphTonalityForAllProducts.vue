@@ -29,14 +29,14 @@ const props = defineProps({
     },
     chartHeight: {
         type: String,
-        default: '600px'
+        default: '500px'
     }
 });
 
 async function getMatrixData() {
     try {
         const response = await api.getDataMatrix();
-        data.value = response.data; // Предполагается, что response.data — это двумерный массив или объект с данными
+        data.value = response.data;
     } catch (e) {
         console.error('Ошибка загрузки данных:', e);
     }
@@ -57,9 +57,6 @@ const generateSeries = () => {
     const yCategories = data.value.y_axis; // Продукты: ["Вклад", "Дебетовая карта", ...]
     const xCategories = data.value.x_axis; // Месяцы: ["May 2025", ...]
 
-    // Но! В matrix_data ключи — это названия продуктов, а внутри — месяцы в формате "2025-05"
-    // А x_axis — человекочитаемые названия ("May 2025"), но в данных — "2025-05"
-    // Нужно сопоставить: "May 2025" → "2025-05"
 
     // Создадим маппинг из человекочитаемого месяца в ISO-месяц
     const monthNameToKey = {
