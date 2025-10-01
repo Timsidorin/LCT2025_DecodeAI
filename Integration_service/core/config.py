@@ -6,8 +6,8 @@ import os
 
 class Configs(BaseSettings):
     # ------------ Веб-сервер ------------
-    HOST: str = "localhost"
-    PORT: int = 8009
+    HOST: str = "0.0.0.0"
+    PORT: int = 8015
 
     PROJECT_NAME: str = "Модуль интеграции с фронтендом"
 
@@ -18,11 +18,7 @@ class Configs(BaseSettings):
     DB_NAME: Optional[str] = Field(default="DecodeAI", env="DATABASE_NAME")
     DB_PASS: Optional[str] = Field(default="admin", env="DATABASE_PASSWORD")
 
-    # # Настройки мониторинга
-    # TELEGRAM_BOT_WEBHOOK_URL: str = None
-    # MONITORING_ENABLED: bool = True
-    # MONITORING_CHECK_INTERVAL: int = 10
-    # MONITORING_NOTIFICATION_THRESHOLD: int = 3
+    TELEGRAM_BOT_URL: str = "http://localhost:8008/send-notification"
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
