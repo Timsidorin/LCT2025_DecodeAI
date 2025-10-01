@@ -1,4 +1,4 @@
-# models/processed_review.py
+# models/raw_review.py
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
@@ -6,20 +6,20 @@ from sqlalchemy import String, Text, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from MLProcessing_service.core.database import Base
+from DataMining_service.core.database import Base
 
 
-class ProcessedReview(Base):
-    """Модель для таблицы обработанных отзывов (processed_reviews)"""
+class RawReview(Base):
+    """Модель для таблицы сырых отзывов (raw_reviews)"""
 
-    __tablename__ = "processed_reviews"
+    __tablename__ = "raw_reviews"
 
     uuid: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid4,
         server_default=func.gen_random_uuid(),
-        comment="Уникальный идентификатор обработанного отзыва"
+        comment="Уникальный идентификатор отзыва"
     )
 
     source: Mapped[str] = mapped_column(
@@ -34,18 +34,6 @@ class ProcessedReview(Base):
         Text,
         nullable=False,
         comment="Текст отзыва"
-    )
-
-    rating: Mapped[Optional[str]] = mapped_column(
-        String(20),
-        nullable=True,
-        comment="Общая тональность отзыва (положительно/отрицательно/нейтрально)"
-    )
-
-    product: Mapped[Optional[str]] = mapped_column(
-        String(255),
-        nullable=True,
-        comment="Основной топик/продукт из ML анализа"
     )
 
     gender: Mapped[Optional[str]] = mapped_column(
@@ -67,9 +55,9 @@ class ProcessedReview(Base):
     )
 
     region_code: Mapped[Optional[str]] = mapped_column(
-        String(30),
+        String(10),
         nullable=True,
-        comment="Код региона (ISO формат)"
+        comment="Код региона"
     )
 
     datetime_review: Mapped[datetime] = mapped_column(
@@ -87,4 +75,4 @@ class ProcessedReview(Base):
     )
 
     def __repr__(self):
-        return f"<ProcessedReview(uuid={self.uuid}, rating={self.rating}, product={self.product})>"
+        return f"<RawReview(uuid={self.uuid}, source={self.source}, gender={self.gender})>"

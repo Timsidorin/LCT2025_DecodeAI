@@ -1,48 +1,67 @@
-from pydantic import BaseModel, Field
-from typing import Optional, Literal
+# shemas/review.py
 from datetime import datetime
+from typing import Optional
 from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 
 class ReviewCreate(BaseModel):
-    text: str = Field(..., min_length=1, description="Текст отзыва")
-    city: Optional[str] = Field(None, description="Город")
-    region_code: Optional[str] = Field(None, description="Код региона")
+    """Схема для создания сырого отзыва (raw_reviews)"""
+
+    source: str = Field(
+        default="API",
+        description="Источник отзыва (banki.ru, sravni.ru, API и т.д.)"
+    )
+
+    text: str = Field(
+        ...,
+        min_length=1,
+        description="Текст отзыва"
+    )
+
+    gender: Optional[str] = Field(
+        None,
+        description="Пол автора: М (мужчина) или Ж (женщина)"
+    )
+
     datetime_review: Optional[datetime] = Field(
-        None, description="Дата и время создания отзыва"
+        None,
+        description="Дата и время написания отзыва"
+    )
+
+    city: Optional[str] = Field(
+        None,
+        max_length=100,
+        description="Город автора отзыва"
+    )
+
+    region: Optional[str] = Field(
+        None,
+        max_length=100,
+        description="Регион"
+    )
+
+    region_code: Optional[str] = Field(
+        None,
+        max_length=10,
+        description="Код региона (например: RU-MOW для Москвы)"
     )
 
 
-class ReviewResponse(BaseModel):
-    uuid: UUID = Field(..., description="Уникальный идентификатор отзыва")
-    source: str = Field(..., description="Источник отзыва")
-    text: str = Field(..., description="Текст отзыва")
-    rating: Optional[str] = Field(None, description="Тональность отзыва")
-    product: Optional[str] = Field(None, description="Название продукта")
-    gender: Optional[str] = Field(None, description="Пол написавшего")
-    city: Optional[str] = Field(None, description="Город")
-    region_code: Optional[str] = Field(None, description="Код региона")
-    datetime_review: datetime = Field(..., description="Дата и время создания отзыва")
-    created_at: datetime = Field(..., description="Время добавления в систему")
+
+class RawReviewResponse(BaseModel):
+    """Схема ответа для сырого отзыва"""
+
+    uuid: UUID
+    source: str
+    text: str
+    gender: Optional[str]
+    city: Optional[str]
+    region: Optional[str]
+    region_code: Optional[str]
+    datetime_review: datetime
+    created_at: datetime
 
     class Config:
         from_attributes = True
-
-
-class ReviewUpdate(BaseModel):
-    text: Optional[str] = Field(None, min_length=1, description="Текст отзыва")
-    rating: Optional[str] = Field(None, description="Тональность отзыва")
-    product: Optional[str] = Field(None, description="Название продукта")
-    gender: Optional[str] = Field(None, description="Пол написавшего")
-    city: Optional[str] = Field(None, description="Город")
-    region_code: Optional[str] = Field(None, description="Код региона")
-
-
-class ReviewFilter(BaseModel):
-    source: Optional[str] = Field(None, description="Фильтр по источнику")
-    rating: Optional[str] = Field(None, description="Фильтр по тональности")
-    gender: Optional[str] = Field(None, description="Фильтр по полу")
-    city: Optional[str] = Field(None, description="Фильтр по городу")
-    region_code: Optional[str] = Field(None, description="Фильтр по региону")
-    date_from: Optional[datetime] = Field(None, description="Дата начала периода")
-    date_to: Optional[datetime] = Field(None, description="Дата окончания периода")
