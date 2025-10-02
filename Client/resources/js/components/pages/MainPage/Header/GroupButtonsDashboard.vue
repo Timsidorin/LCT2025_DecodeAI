@@ -35,6 +35,11 @@
                         </template>
                     </q-select>
                 </div>
+                <q-icon @click="deleteTemplate(selectedTemplates.value)" class="q-mt-lg q-ml-md button-trash" size="26px" name="delete">
+                    <q-tooltip class="text-body2">
+                        Удалить шаблон
+                    </q-tooltip>
+                </q-icon>
                 <div class="column q-ml-xl">
                     <span class="text-subtitle1">Новый элемент</span>
                     <HeaderCreateNewElement/>
@@ -96,10 +101,28 @@ function onTemplateSelect(value) {
 onMounted(async () => {
     await getTemplates();
 });
+
+async function deleteTemplate(id) {
+    try {
+        let response = await api.deleteTemplate(id);
+        await getTemplates();
+    } catch (e) {
+        return e;
+    }
+}
 </script>
 
 <style scoped>
 span {
     color: #4e4a4a;
+}
+
+.button-trash {
+    color: black;
+}
+
+.button-trash:hover {
+    color: rgb(43, 97, 236);
+    cursor: pointer;
 }
 </style>

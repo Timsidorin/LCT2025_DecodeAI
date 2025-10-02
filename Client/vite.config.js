@@ -14,6 +14,6 @@ export default defineConfig({
     ],
     define: {
         __BASE__LARAVEL__URL__: JSON.stringify('https://lct-2025'),
-        __BASE__PYTHON__URL__: JSON.stringify('https://exultantly-tops-mole.cloudpub.ru'),
+        __BASE__PYTHON__URL__: JSON.stringify('https://pulseai.knastu.ru/BI'),
     },
 })
