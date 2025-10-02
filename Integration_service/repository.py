@@ -1067,6 +1067,236 @@ class ReviewAnalyticsRepository:
 
         return f"({r} {g} {b})"
 
+    async def get_gender_product_preferences(
+            self,
+            region_code: Optional[str] = None,
+            city: Optional[str] = None,
+            date_from: Optional[datetime] = None,
+            date_to: Optional[datetime] = None,
+            min_reviews: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Анализ предпочтений по продуктам у мужчин и женщин"""
+
+        query = select(
+            Review.gender.label('gender'),
+            Review.product.label('product'),
+            func.count(Review.uuid).label('total_reviews'),
+            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_reviews'),
+            func.sum(case((Review.rating == 'negative', 1), else_=0)).label('negative_reviews'),
+            func.sum(case((Review.rating == 'neutral', 1), else_=0)).label('neutral_reviews'),
+            func.avg(
+                case(
+                    (Review.rating == 'positive', 5),
+                    (Review.rating == 'neutral', 3),
+                    (Review.rating == 'negative', 1),
+                    else_=3
+                )
+            ).label('avg_rating')
+        )
+
+        # Применяем фильтры
+        if region_code:
+            query = query.where(Review.region_code == region_code)
+        if city:
+            query = query.where(Review.city.ilike(f"%{city}%"))
+        if date_from:
+            date_from_naive = date_from.replace(tzinfo=None) if date_from.tzinfo else date_from
+            query = query.where(Review.datetime_review >= date_from_naive)
+        if date_to:
+            date_to_naive = date_to.replace(tzinfo=None) if date_to.tzinfo else date_to
+            date_to_end = date_to_naive.replace(hour=23, minute=59, second=59, microsecond=999999)
+            query = query.where(Review.datetime_review <= date_to_end)
+
+        # Фильтруем только валидные значения пола и продуктов
+        query = query.where(
+            and_(
+                Review.gender.in_(['М', 'Ж']),
+                Review.product.is_not(None),
+                Review.product != ''
+            )
+        )
+
+        query = query.group_by(Review.gender, Review.product)
+        query = query.having(func.count(Review.uuid) >= min_reviews)
+        query = query.order_by(Review.gender, func.count(Review.uuid).desc())
+
+        result = await self.session.execute(query)
+
+        gender_products = []
+        for row in result:
+            # Преобразуем значения для отображения
+            gender_display = 'Мужской' if row.gender == 'М' else 'Женский'
+
+            positive_ratio = (row.positive_reviews / row.total_reviews * 100) if row.total_reviews > 0 else 0
+            negative_ratio = (row.negative_reviews / row.total_reviews * 100) if row.total_reviews > 0 else 0
+            satisfaction_score = (
+                                             row.positive_reviews - row.negative_reviews) / row.total_reviews if row.total_reviews > 0 else 0
+
+            gender_products.append({
+                "gender": gender_display,
+                "gender_raw": row.gender,
+                "product": row.product,
+                "total_reviews": row.total_reviews,
+                "positive_reviews": row.positive_reviews,
+                "negative_reviews": row.negative_reviews,
+                "neutral_reviews": row.neutral_reviews,
+                "avg_rating": round(float(row.avg_rating), 2) if row.avg_rating else 0.0,
+                "positive_ratio": round(positive_ratio, 1),
+                "negative_ratio": round(negative_ratio, 1),
+                "satisfaction_score": round(satisfaction_score, 3)
+            })
+
+        return gender_products
+
+    async def get_gender_product_comparison(
+            self,
+            region_code: Optional[str] = None,
+            city: Optional[str] = None,
+            date_from: Optional[datetime] = None,
+            date_to: Optional[datetime] = None,
+            top_products: int = 10
+    ) -> Dict[str, Any]:
+        """Сравнительный анализ предпочтений мужчин и женщин по продуктам"""
+
+        # Получаем топ продуктов по общему количеству отзывов
+        top_products_query = select(
+            Review.product,
+            func.count(Review.uuid).label('total_count')
+        ).where(
+            and_(
+                Review.gender.in_(['М', 'Ж']),
+                Review.product.is_not(None)
+            )
+        )
+
+        if region_code:
+            top_products_query = top_products_query.where(Review.region_code == region_code)
+        if city:
+            top_products_query = top_products_query.where(Review.city.ilike(f"%{city}%"))
+        if date_from:
+            date_from_naive = date_from.replace(tzinfo=None) if date_from.tzinfo else date_from
+            top_products_query = top_products_query.where(Review.datetime_review >= date_from_naive)
+        if date_to:
+            date_to_naive = date_to.replace(tzinfo=None) if date_to.tzinfo else date_to
+            date_to_end = date_to_naive.replace(hour=23, minute=59, second=59, microsecond=999999)
+            top_products_query = top_products_query.where(Review.datetime_review <= date_to_end)
+
+        top_products_query = top_products_query.group_by(Review.product)
+        top_products_query = top_products_query.order_by(func.count(Review.uuid).desc())
+        top_products_query = top_products_query.limit(top_products)
+
+        top_products_result = await self.session.execute(top_products_query)
+        product_list = [row.product for row in top_products_result.fetchall()]
+
+        if not product_list:
+            return {"comparison_data": [], "summary": {}}
+
+        # Анализ по полу для топ продуктов
+        main_query = select(
+            Review.product,
+            Review.gender,
+            func.count(Review.uuid).label('reviews_count'),
+            func.sum(case((Review.rating == 'positive', 1), else_=0)).label('positive_count'),
+            func.avg(
+                case(
+                    (Review.rating == 'positive', 5),
+                    (Review.rating == 'neutral', 3),
+                    (Review.rating == 'negative', 1),
+                    else_=3
+                )
+            ).label('avg_rating')
+        ).where(
+            and_(
+                Review.product.in_(product_list),
+                Review.gender.in_(['М', 'Ж'])
+            )
+        )
+
+        # Применяем те же фильтры
+        if region_code:
+            main_query = main_query.where(Review.region_code == region_code)
+        if city:
+            main_query = main_query.where(Review.city.ilike(f"%{city}%"))
+        if date_from:
+            date_from_naive = date_from.replace(tzinfo=None) if date_from.tzinfo else date_from
+            main_query = main_query.where(Review.datetime_review >= date_from_naive)
+        if date_to:
+            date_to_naive = date_to.replace(tzinfo=None) if date_to.tzinfo else date_to
+            date_to_end = date_to_naive.replace(hour=23, minute=59, second=59, microsecond=999999)
+            main_query = main_query.where(Review.datetime_review <= date_to_end)
+
+        main_query = main_query.group_by(Review.product, Review.gender)
+        main_query = main_query.order_by(Review.product, Review.gender)
+
+        main_result = await self.session.execute(main_query)
+
+        # Обработка результатов
+        product_comparison = {}
+        for row in main_result:
+            product = row.product
+            gender_display = 'Мужской' if row.gender == 'М' else 'Женский'
+
+            if product not in product_comparison:
+                product_comparison[product] = {
+                    "product": product,
+                    "male_data": {},
+                    "female_data": {},
+                    "total_reviews": 0
+                }
+
+            positive_ratio = (row.positive_count / row.reviews_count * 100) if row.reviews_count > 0 else 0
+
+            gender_data = {
+                "reviews_count": row.reviews_count,
+                "positive_count": row.positive_count,
+                "positive_ratio": round(positive_ratio, 1),
+                "avg_rating": round(float(row.avg_rating), 2) if row.avg_rating else 0.0
+            }
+
+            if row.gender == 'М':
+                product_comparison[product]["male_data"] = gender_data
+            else:
+                product_comparison[product]["female_data"] = gender_data
+
+            product_comparison[product]["total_reviews"] += row.reviews_count
+
+        # Преобразуем в список и добавляем статистику
+        comparison_data = []
+        for product, data in product_comparison.items():
+            male_reviews = data["male_data"].get("reviews_count", 0)
+            female_reviews = data["female_data"].get("reviews_count", 0)
+
+            # Расчет предпочтения
+            if male_reviews + female_reviews > 0:
+                male_preference = male_reviews / (male_reviews + female_reviews) * 100
+                female_preference = female_reviews / (male_reviews + female_reviews) * 100
+            else:
+                male_preference = female_preference = 0
+
+            comparison_data.append({
+                **data,
+                "male_preference_ratio": round(male_preference, 1),
+                "female_preference_ratio": round(female_preference, 1),
+                "gender_balance": "balanced" if abs(male_preference - female_preference) <= 10 else
+                "male_preferred" if male_preference > female_preference else "female_preferred"
+            })
+
+        # Сортировка по общему количеству отзывов
+        comparison_data.sort(key=lambda x: x["total_reviews"], reverse=True)
+
+        return {
+            "comparison_data": comparison_data,
+            "summary": {
+                "total_products": len(comparison_data),
+                "total_reviews": sum(item["total_reviews"] for item in comparison_data),
+                "balanced_products": len([item for item in comparison_data if item["gender_balance"] == "balanced"]),
+                "male_preferred_products": len(
+                    [item for item in comparison_data if item["gender_balance"] == "male_preferred"]),
+                "female_preferred_products": len(
+                    [item for item in comparison_data if item["gender_balance"] == "female_preferred"])
+            }
+        }
+
     # ========== СТАРЫЕ МЕТОДЫ ТЕПЛОВОЙ КАРТЫ ==========
 
     async def get_regions_with_sentiment_colors(self) -> List[Dict[str, Any]]:

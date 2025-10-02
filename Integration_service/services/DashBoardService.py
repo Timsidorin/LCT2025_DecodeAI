@@ -341,6 +341,182 @@ class DashboardService:
 
         return insights
 
+    async def get_gender_product_preferences_dashboard(
+            self,
+            region_code: Optional[str] = None,
+            city: Optional[str] = None,
+            date_from: Optional[datetime] = None,
+            date_to: Optional[datetime] = None,
+            analysis_type: str = "preferences"  # "preferences" или "comparison"
+    ) -> Dict[str, Any]:
+        """Дашборд анализа предпочтений по продуктам у мужчин и женщин"""
+
+        try:
+            if analysis_type == "comparison":
+                # Сравнительный анализ
+                comparison_result = await self.analytics_repo.get_gender_product_comparison(
+                    region_code=region_code,
+                    city=city,
+                    date_from=date_from,
+                    date_to=date_to,
+                    top_products=15
+                )
+
+                return {
+                    "analysis_type": "comparison",
+                    "comparison_data": comparison_result["comparison_data"],
+                    "summary": comparison_result["summary"],
+                    "insights": self._generate_gender_product_insights(comparison_result["comparison_data"]),
+                    "filters_applied": {
+                        "region_code": region_code,
+                        "city": city,
+                        "date_from": date_from.isoformat() if date_from else None,
+                        "date_to": date_to.isoformat() if date_to else None
+                    },
+                    "timestamp": datetime.now().isoformat()
+                }
+            else:
+                # Детальный анализ предпочтений
+                preferences_data = await self.analytics_repo.get_gender_product_preferences(
+                    region_code=region_code,
+                    city=city,
+                    date_from=date_from,
+                    date_to=date_to,
+                    min_reviews=5
+                )
+
+                # Группируем по полу
+                male_products = [item for item in preferences_data if item["gender_raw"] == "М"]
+                female_products = [item for item in preferences_data if item["gender_raw"] == "Ж"]
+
+                # Топ продукты для каждого пола
+                male_top = sorted(male_products, key=lambda x: x["total_reviews"], reverse=True)[:10]
+                female_top = sorted(female_products, key=lambda x: x["total_reviews"], reverse=True)[:10]
+
+                return {
+                    "analysis_type": "preferences",
+                    "male_preferences": {
+                        "top_products": male_top,
+                        "total_products": len(male_products),
+                        "total_reviews": sum(item["total_reviews"] for item in male_products),
+                        "avg_satisfaction": round(sum(item["satisfaction_score"] for item in male_products) / len(
+                            male_products) if male_products else 0, 3)
+                    },
+                    "female_preferences": {
+                        "top_products": female_top,
+                        "total_products": len(female_products),
+                        "total_reviews": sum(item["total_reviews"] for item in female_products),
+                        "avg_satisfaction": round(sum(item["satisfaction_score"] for item in female_products) / len(
+                            female_products) if female_products else 0, 3)
+                    },
+                    "insights": self._generate_preferences_insights(male_top, female_top),
+                    "filters_applied": {
+                        "region_code": region_code,
+                        "city": city,
+                        "date_from": date_from.isoformat() if date_from else None,
+                        "date_to": date_to.isoformat() if date_to else None
+                    },
+                    "timestamp": datetime.now().isoformat()
+                }
+
+        except Exception as e:
+            return {
+                "analysis_type": analysis_type,
+                "error": f"Ошибка анализа предпочтений: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }
+
+    def _generate_gender_product_insights(self, comparison_data: List[Dict]) -> List[Dict[str, str]]:
+        """Генерация инсайтов для сравнительного анализа"""
+        insights = []
+
+        if not comparison_data:
+            return insights
+
+        # Топ продукт по популярности
+        top_product = max(comparison_data, key=lambda x: x["total_reviews"])
+        insights.append({
+            "type": "popularity",
+            "message": f"Самый обсуждаемый продукт: {top_product['product']} ({top_product['total_reviews']} отзывов)",
+            "priority": "info"
+        })
+
+        # Анализ гендерного баланса
+        balanced = len([item for item in comparison_data if item["gender_balance"] == "balanced"])
+        male_preferred = len([item for item in comparison_data if item["gender_balance"] == "male_preferred"])
+        female_preferred = len([item for item in comparison_data if item["gender_balance"] == "female_preferred"])
+
+        if balanced > male_preferred and balanced > female_preferred:
+            insights.append({
+                "type": "balance",
+                "message": f"Большинство продуктов ({balanced} из {len(comparison_data)}) имеют сбалансированные предпочтения",
+                "priority": "success"
+            })
+
+        # Продукты с сильными предпочтениями
+        strong_male = [item for item in comparison_data if item["male_preference_ratio"] > 70]
+        strong_female = [item for item in comparison_data if item["female_preference_ratio"] > 70]
+
+        if strong_male:
+            top_male = max(strong_male, key=lambda x: x["male_preference_ratio"])
+            insights.append({
+                "type": "male_preference",
+                "message": f"Сильное предпочтение мужчин: {top_male['product']} ({top_male['male_preference_ratio']:.1f}%)",
+                "priority": "info"
+            })
+
+        if strong_female:
+            top_female = max(strong_female, key=lambda x: x["female_preference_ratio"])
+            insights.append({
+                "type": "female_preference",
+                "message": f"Сильное предпочтение женщин: {top_female['product']} ({top_female['female_preference_ratio']:.1f}%)",
+                "priority": "info"
+            })
+
+        return insights
+
+    def _generate_preferences_insights(self, male_top: List[Dict], female_top: List[Dict]) -> List[Dict[str, str]]:
+        """Генерация инсайтов для детального анализа предпочтений"""
+        insights = []
+
+        if male_top:
+            male_favorite = male_top[0]
+            insights.append({
+                "type": "male_top",
+                "message": f"Топ продукт среди мужчин: {male_favorite['product']} ({male_favorite['positive_ratio']:.1f}% позитивных отзывов)",
+                "priority": "info"
+            })
+
+        if female_top:
+            female_favorite = female_top[0]
+            insights.append({
+                "type": "female_top",
+                "message": f"Топ продукт среди женщин: {female_favorite['product']} ({female_favorite['positive_ratio']:.1f}% позитивных отзывов)",
+                "priority": "info"
+            })
+
+        # Сравнение удовлетворенности
+        if male_top and female_top:
+            male_avg_satisfaction = sum(item["satisfaction_score"] for item in male_top[:5]) / min(5, len(male_top))
+            female_avg_satisfaction = sum(item["satisfaction_score"] for item in female_top[:5]) / min(5,
+                                                                                                       len(female_top))
+
+            if abs(male_avg_satisfaction - female_avg_satisfaction) > 0.1:
+                if male_avg_satisfaction > female_avg_satisfaction:
+                    insights.append({
+                        "type": "satisfaction",
+                        "message": f"Мужчины более удовлетворены продуктами (разница: {(male_avg_satisfaction - female_avg_satisfaction):.2f})",
+                        "priority": "info"
+                    })
+                else:
+                    insights.append({
+                        "type": "satisfaction",
+                        "message": f"Женщины более удовлетворены продуктами (разница: {(female_avg_satisfaction - male_avg_satisfaction):.2f})",
+                        "priority": "info"
+                    })
+
+        return insights
+
     async def get_products_sentiment_analysis(
             self,
             filters: ProductsAnalysisFilters
