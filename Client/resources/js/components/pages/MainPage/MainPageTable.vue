@@ -8,7 +8,7 @@
             row-key="id"
             title="Региональная статистика по продуктам"
             :rows-per-page="1000"
-            :rows-per-page-options="[10, 20, 50, 100, 500, 1000]"
+            :rows-per-page-options="[20, 50, 100, 500, 1000]"
             style="height: 400px; border-radius: 10px; width: 100%"
         >
             <template v-slot:body="props">

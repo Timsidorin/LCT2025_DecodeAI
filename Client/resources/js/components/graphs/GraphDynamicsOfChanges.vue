@@ -1,10 +1,10 @@
 <template>
     <q-card style="border-radius: 10px">
         <q-card-section>
-            <div class="text-h6">Динамика отзывов по продукту</div>
+            <div class="text-h6">Динамика отзывов по продукту (регион)</div>
         </q-card-section>
         <q-card-section>
-            <div style="height: 500px" ref="productGraphDiv"/>
+            <div style="height: 700px" ref="productGraphDiv"/>
         </q-card-section>
     </q-card>
 </template>
@@ -17,6 +17,8 @@ import { useWatchProduct, useWatchRegion, useWatchEndDate, useWatchStartDate } f
 import { useRegionStore } from "../../store/SelectRegion.js";
 import { onMounted, ref, onUnmounted, nextTick } from "vue";
 import * as echarts from 'echarts';
+import BaseLoader from "../ui/BaseLoader.vue";
+
 
 const dateStore = useSelectDateStore();
 const productStore = useProductStore();
@@ -26,6 +28,7 @@ const rawData = ref('');
 const productGraphDiv = ref(null);
 let myChart = null;
 
+const loader = ref(true);
 // Инициализация ECharts
 function initChart() {
     if (productGraphDiv.value && !myChart) {
@@ -133,14 +136,15 @@ function run(_rawData) {
 
 async function getData() {
     try {
+        loader.value = true;
         let response = await api.getDynamicsOfChanges(
             dateStore.startDate,
             dateStore.endDate,
-            productStore.product,
-            regionStore.region
+            productStore.product.value,
+            regionStore.region.value
         );
         rawData.value = response.data;
-
+        loader.value = false;
         // Отрисовываем график после получения данных
         if (rawData.value) {
             run(rawData.value);

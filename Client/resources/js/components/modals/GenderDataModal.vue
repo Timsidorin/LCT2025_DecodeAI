@@ -28,7 +28,7 @@
                     >
                         <div class="card" :style="{ animationDelay: `${index * 0.1}s` }">
                             <div class="card-header">
-                                <h3 class="product-name">{{ product.product }}</h3>
+                                <h3 class="product-name">{{ getFirstCharInUp(product.product) }}</h3>
                                 <q-badge
                                     :color="getRatingColor(product.avg_rating)"
                                     class="rating-badge"
@@ -113,6 +113,7 @@
 
 <script setup>
 import { computed } from 'vue';
+import {getFirstCharInUp} from "../../utils/mix.js";
 
 const props = defineProps(['data', 'gender']);
 const model = defineModel();

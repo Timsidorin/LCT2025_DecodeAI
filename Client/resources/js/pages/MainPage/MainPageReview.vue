@@ -1,14 +1,14 @@
 <template>
     <div class="column q-gutter-xl">
         <div class="row q-gutter-x-xl">
-            <GraphDynamicsOfChanges class="col"/>
-            <GraphTonalityForAllProducts class="col"/>
+            <PreferencesGender/>
             <MainPageTable class="col"/>
         </div>
-        <BasicSummary/>
         <div class="row q-gutter-x-xl">
-            <PreferencesGender/>
+            <GraphDynamicsOfChanges class="col"/>
+            <GraphTonalityForAllProducts chart-height="700px" class="col"/>
         </div>
+        <BasicSummary/>
     </div>
 </template>
 

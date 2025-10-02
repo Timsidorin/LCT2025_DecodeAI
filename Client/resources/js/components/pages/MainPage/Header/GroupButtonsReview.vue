@@ -46,12 +46,14 @@ async function getRegionList() {
 }
 
 function addCityList(arr) {
-    cityList.value = arr.cities.map((element) => {
-        return {
-            label: element.city_name,
-            value: element.city_name
-        }
-    });
+    if (arr.cities) {
+        cityList.value = arr.cities.map((element) => {
+            return {
+                label: element.city_name,
+                value: element.city_name
+            }
+        });
+    }
 }
 
 const region = computed({

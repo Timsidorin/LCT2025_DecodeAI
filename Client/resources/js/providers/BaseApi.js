@@ -81,9 +81,18 @@ export class BaseApi {
         this._headers = headers;
     }
 
+    setCsrfHeader() {
+        const csrfToken = localStorage.getItem('csrf');
+        if (csrfToken) {
+            this._headers['X-CSRF-TOKEN'] = csrfToken;
+        }
+    }
+
     async createRequest() {
         try {
             if (this.axiosInstance) {
+                this.setCsrfHeader();
+                console.log(this._headers)
                 return await this.axiosInstance({
                     url: this.baseUrl + this.sourceUrl,
                     method: this.httpMethod,

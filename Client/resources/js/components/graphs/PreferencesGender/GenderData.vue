@@ -40,6 +40,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import GenderDataModal from "../../modals/GenderDataModal.vue";
+import {getFirstCharInUp} from "../../../utils/mix.js";
 
 const props = defineProps(['data', 'title', 'insights', 'gender']);
 const modalStatus = ref(false);
@@ -73,7 +74,7 @@ const formatMessage = (message) => {
     const firstWord = words[0];
     const restOfText = words.slice(1).join(' ');
 
-    return `<strong class="highlighted-text">${firstWord}</strong>${restOfText ? ' ' + restOfText : ''}`;
+    return `<strong class="highlighted-text">${getFirstCharInUp(firstWord)}</strong>${restOfText ? ' ' + restOfText : ''}`;
 };
 </script>
 

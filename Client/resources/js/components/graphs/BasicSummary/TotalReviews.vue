@@ -11,89 +11,73 @@
     </q-card>
 </template>
 
-<script>
+<script setup>
+import { ref, watch, onMounted, onUnmounted } from 'vue';
 import * as echarts from 'echarts';
 
-export default {
-    name: 'PieChart',
-    props: {
-        chartData: {
-            type: Array,
-            default: () => [
-                {value: 1048, name: 'Положительные', itemStyle: {color: '#2ea81d'}},
-                {value: 735, name: 'Нейтральные', itemStyle: {color: '#cc0909'}},
-                {value: 580, name: 'Отрицательные', itemStyle: {color: '#ffde00'}},
-            ]
-        },
+const props = defineProps({
+    chartData: {
+        type: Array,
+        default: () => [
+            {value: 1048, name: 'Положительные', itemStyle: {color: '#2ea81d'}},
+            {value: 735, name: 'Нейтральные', itemStyle: {color: '#cc0909'}},
+            {value: 580, name: 'Отрицательные', itemStyle: {color: '#ffde00'}},
+        ]
     },
-    data() {
-        return {
-            myChart: null
-        };
-    },
-    mounted() {
-        this.initChart();
-    },
-    methods: {
-        initChart() {
-            this.myChart = echarts.init(this.$refs.chartDom);
+});
 
-            const option = {
-                tooltip: {
-                    trigger: 'item'
-                },
-                legend: {},
-                series: [
-                    {
-                        type: 'pie',
-                        radius: '50%',
-                        data: this.chartData,
-                    }
-                ]
-            };
+const chartDom = ref(null);
+const myChart = ref(null);
 
-            this.myChart.setOption(option);
+const initChart = () => {
+    if (!chartDom.value) return;
 
-            // Обработчик изменения размера окна
-            window.addEventListener('resize', this.handleResize);
+    myChart.value = echarts.init(chartDom.value);
+
+    const option = {
+        tooltip: {
+            trigger: 'item'
         },
-        handleResize() {
-            if (this.myChart) {
-                this.myChart.resize();
+        legend: {},
+        series: [
+            {
+                type: 'pie',
+                radius: '50%',
+                data: props.chartData,
             }
-        }
-    },
-    watch: {
-        chartData: {
-            handler(newData) {
-                if (this.myChart) {
-                    this.myChart.setOption({
-                        series: [{
-                            data: newData
-                        }]
-                    });
-                }
-            },
-            deep: true
-        },
-        title(newTitle) {
-            if (this.myChart) {
-                this.myChart.setOption({
-                    title: {
-                        text: newTitle
-                    }
-                });
-            }
-        },
-        subtext(newSubtext) {
-            if (this.myChart) {
-                this.myChart.setOption({
-                    title: {
-                        subtext: newSubtext
-                    }
-                });
-            }
-        }
+        ]
+    };
+
+    myChart.value.setOption(option);
+};
+
+const handleResize = () => {
+    if (myChart.value) {
+        myChart.value.resize();
     }
 };
+
+// Наблюдатели за изменениями данных
+watch(() => props.chartData, (newData) => {
+    if (myChart.value) {
+        myChart.value.setOption({
+            series: [{
+                data: newData
+            }]
+        });
+    }
+}, { deep: true });
+
+// Жизненный цикл
+onMounted(() => {
+    initChart();
+    window.addEventListener('resize', handleResize);
+});
+
+onUnmounted(() => {
+    if (myChart.value) {
+        myChart.value.dispose();
+    }
+    window.removeEventListener('resize', handleResize);
+});
 </script>

@@ -8,7 +8,9 @@ import "../css/app.css";
 import langRu from "quasar/lang/ru";
 import {createPinia} from "pinia";
 import {colorConfig} from "./config/colorQuasar.js";
+import {addLocal} from "./utils/addLocal.js";
 
+addLocal();
 const pinia = createPinia();
 const app = createApp(App);
 app.use(router)

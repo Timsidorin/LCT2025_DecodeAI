@@ -1,6 +1,8 @@
 <template>
-    <GenderData v-if="maleData" gender="male" :insights="insights" :data="maleData"/>
-    <GenderData v-if="femaleData" gender="female" :insights="insights" :data="femaleData"/>
+    <div style="height: 200px" class="row q-gutter-x-xl">
+        <GenderData v-if="maleData" gender="male" :insights="insights" :data="maleData"/>
+        <GenderData v-if="femaleData" gender="female" :insights="insights" :data="femaleData"/>
+    </div>
 </template>
 
 <script setup>
