@@ -35,7 +35,7 @@ function initGraph() {
         toolbox: {
             show: true,
             feature: {
-                saveAsImage: {title: 'Скачать файл'}
+                saveAsImage: {title: 'Скачать график'}
             }
         },
         series: props.series

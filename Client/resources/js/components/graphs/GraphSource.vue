@@ -1,6 +1,7 @@
 <template>
     <base-loader v-if="loading"/>
-    <base-graph v-else title-card="Региональная статистика по источнику" :column="column" type="category" :series="series" :legend="{}"/>
+    <base-graph v-if="series.length > 0" title-card="Региональная статистика по источнику" :column="column" type="category" :series="series" :legend="{}"/>
+    <MessageNoData v-if="!loading && series.length === 0"/>
 </template>
 
 <script setup>
@@ -11,6 +12,7 @@ import {useSelectDateStore} from "../../store/SelectDate.js";
 import {useWatchRegion, useWatchStartDate, useWatchEndDate} from "../../composables/watchChanges.js";
 import {useRegionStore} from "../../store/SelectRegion.js";
 import BaseLoader from "../ui/BaseLoader.vue";
+import MessageNoData from "../ui/MessageNoData.vue";
 
 const storeRegion = useRegionStore();
 const storeDate = useSelectDateStore();
@@ -37,9 +39,12 @@ async function getData() {
             });
             sources.data.push(element.source);
             loading.value = false;
+            console.log(loading.value)
         });
     } catch (e) {
         return e;
+    } finally {
+        loading.value = false;
     }
 }
 

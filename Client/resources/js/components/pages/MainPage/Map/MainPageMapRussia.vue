@@ -17,6 +17,7 @@
     <q-card style="border-radius: 10px">
         <q-card-section>
             <div class="text-h6">Тепловая карта по отзывам</div>
+            <span style="font-size: 26px" class="text-primary">{{hoverRegion}}</span>
         </q-card-section>
         <q-card-section>
             <div id="rf-map" ref="rfMap" class="rf-map">
@@ -297,7 +298,7 @@
 </template>
 
 <script setup>
-import {useTemplateRef, onMounted, ref, watch} from "vue";
+import {useTemplateRef, onMounted, ref, watch, computed} from "vue";
 import {MapApi} from "../../../../providers/MapApi.js";
 import {useRegionStore} from "../../../../store/SelectRegion.js";
 import BaseLoader from "../../../ui/BaseLoader.vue";
@@ -357,17 +358,25 @@ function resetMapColors() {
 
 function handleMapClick(e) {
     if (e.target.dataset.title) {
-        let region = {
+        store.setRegion({
             label: e.target.dataset.title,
             value: e.target.dataset.code
-        }
-        store.setRegion(region);
+        });
+    }
+}
+
+
+const hoverRegion = ref('');
+function hoverMap(e) {
+    if (e.target.dataset.title) {
+        hoverRegion.value = e.target.dataset.title;
     }
 }
 
 onMounted(async () => {
     if (rfMap.value) {
         rfMap.value.addEventListener('click', handleMapClick);
+        rfMap.value.addEventListener('mouseover', hoverMap);
         await getData();
     }
 });
