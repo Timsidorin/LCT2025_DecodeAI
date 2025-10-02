@@ -275,7 +275,7 @@ app.add_middleware(
 app.include_router(kafka_router)
 
 
-@app.post("/predict", response_model=PredictResponse, description="Ручной прогон через ML модель")
+@app.post("/predict", response_model=PredictResponse, description="Ручной прогон через ML модель", name="Получить прдесказание ML модели")
 async def predict_sentiment_and_topics(request: PredictRequest):
     """
     """
