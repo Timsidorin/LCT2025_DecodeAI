@@ -1,22 +1,25 @@
+# parser_service.py
 import asyncio
-from ReviewParser import ReviewMonitor as RM
+
+from DataMining_service.services.ReviewService import ReviewService
+from DataMining_service.auto_parser.ReviewParser import ReviewMonitor as RM
 from DataMining_service.shemas.review import ReviewCreate
 from DataMining_service.core.database import get_async_session
 from DataMining_service.core.broker import KafkaBrokerManager
-from DataMining_service.repository import ReviewRepository
-from DataMining_service.ReviewService import ReviewService
+from DataMining_service.raw_repository import RawReviewRepository
+
 
 parser = RM()
 
 
 async def create_review_service():
-    """Создает сервис обзоров без зависимости от FastAPI"""
+    """Создает сервис для работы с сырыми отзывами"""
     async for session in get_async_session():
         kafka_broker = KafkaBrokerManager()
         await kafka_broker.connect()
 
         try:
-            repo = ReviewRepository(session)
+            repo = RawReviewRepository(session)
             review_service = ReviewService(kafka_broker, repo)
             yield review_service
         finally:
@@ -26,25 +29,49 @@ async def create_review_service():
 
 
 async def get_and_publish_reviews():
-    """Получает и публикует новые отзывы"""
+    """
+    Получает новые отзывы из парсера и обрабатывает их:
+    1. Определяет пол по тексту
+    2. Сохраняет в таблицу raw_reviews
+    3. Отправляет в Kafka топик raw_reviews для ML обработки
+    """
     result = parser.get_new_reviews()
 
-    if result:
+    if result and result.get("reviews"):
+        print(f"📥 Получено {len(result['reviews'])} новых отзывов из парсера")
+
         async for review_service in create_review_service():
+            success_count = 0
+            error_count = 0
+
             for review in result["reviews"]:
-                serialized_review = ReviewCreate(
-                    source=review["source_id"],
-                    text=review["text"],
-                    datetime_review=review["datetime_review"],
-                    rating=None,
-                    product=None,
-                    city=review.get("city"),
-                    region_code=review.get("region_code"),
-                )
-                print(serialized_review)
-                await review_service.create_review(serialized_review)
+                try:
+                    serialized_review = ReviewCreate(
+                        source=review["source_id"],
+                        text=review["text"],
+                        datetime_review=review["datetime_review"],
+                        city=review.get("city"),
+                        region=review.get("region"),
+                        region_code=review.get("region_code")
+                    )
+
+                    response = await review_service.create_review(serialized_review)
+
+                except Exception as e:
+                    print(f"Ошибка обработки отзыва: {e}")
+
             break
+    else:
+        print("📭 Новых отзывов нет")
+
+
+async def main():
+    try:
+        await get_and_publish_reviews()
+        print("Парсер завершил работу")
+    except Exception as e:
+        print(f"ошибка парсера: {e}")
 
 
 if __name__ == "__main__":
-    asyncio.run(get_and_publish_reviews())
+    asyncio.run(main())

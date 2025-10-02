@@ -1,16 +1,47 @@
+# GEO_service/get_region.py
 import requests
 from ..core.config import configs
 
 
 def get_region_dadata(city_name):
-    url = "https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address"
-    headers = {
-        "Authorization": f"Token {configs.GEO_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    data = {"query": city_name}
-    response = requests.post(url, headers=headers, json=data)
-    if response.json()["suggestions"]:
-        suggestion = response.json()["suggestions"][0]
-        return suggestion["data"].get("region_iso_code", None)
-    return None
+    """
+    Получение региона и ISO кода региона по названию города через DaData API"""
+    if not city_name:
+        return None
+
+    try:
+        url = "https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address"
+        headers = {
+            "Authorization": f"Token {configs.GEO_TOKEN}",
+            "Content-Type": "application/json",
+        }
+        data = {"query": city_name}
+
+        response = requests.post(url, headers=headers, json=data, timeout=5)
+        response.raise_for_status()
+
+        result = response.json()
+
+        if result.get("suggestions"):
+            suggestion = result["suggestions"][0]
+            data_obj = suggestion.get("data", {})
+            region = data_obj.get("region_with_type")
+            if not region:
+                region = data_obj.get("region")
+            region_code = data_obj.get("region_iso_code")
+            if region and region_code:
+                return {
+                    "region": region,
+                    "region_code": region_code
+                }
+            if region:
+                return {
+                    "region": region,
+                    "region_code": None
+                }
+
+        return None
+
+    except requests.RequestException as e:
+        print(f"Ошибка запроса к DaData для '{city_name}': {e}")
+        return None

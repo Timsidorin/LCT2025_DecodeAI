@@ -7,7 +7,6 @@ export const useSelectDateStore = defineStore('date', () => {
 
     function setStartDate(newDate) {
         startDate.value = newDate;
-        console.log(startDate.value)
     }
 
     function setEndDate(newDate) {

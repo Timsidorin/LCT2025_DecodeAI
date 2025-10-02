@@ -1,18 +1,17 @@
+# main.py
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from DataMining_service.models.review import Review
 from core.config import configs
 from core.broker import KafkaBrokerManager
 from core.database import get_async_session
-from repository import ReviewRepository
-from shemas.review import ReviewResponse
-from ReviewService import ReviewService
+from raw_repository import RawReviewRepository
+from shemas.review import ReviewCreate, RawReviewResponse
+from services.ReviewService import ReviewService
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
 
 kafka_broker = KafkaBrokerManager()
 scheduler = None
@@ -20,8 +19,13 @@ scheduler = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Управление жизненным циклом приложения"""
     global scheduler
+
+    # Подключаемся к Kafka
     await kafka_broker.connect()
+
+    # Инициализируем планировщик
     if scheduler is None:
         scheduler = AsyncIOScheduler()
         from auto_parser.ParserService import get_and_publish_reviews
@@ -37,9 +41,9 @@ async def lifespan(app: FastAPI):
 
         try:
             scheduler.start()
-            print(f"Планировщик запущен с {len(scheduler.get_jobs())} задачами")
+            print(f"✅ Планировщик запущен с {len(scheduler.get_jobs())} задачами")
         except Exception as e:
-            print(f"Ошибка запуска планировщика: {e}")
+            print(f"❌ Ошибка запуска планировщика: {e}")
 
     try:
         yield
@@ -65,23 +69,25 @@ app.add_middleware(
 
 
 def get_review_service(
-    session: AsyncSession = Depends(get_async_session),
-    broker: KafkaBrokerManager = Depends(lambda: kafka_broker),
+        session: AsyncSession = Depends(get_async_session),
+        broker: KafkaBrokerManager = Depends(lambda: kafka_broker),
 ) -> ReviewService:
-    repo = ReviewRepository(session)
+    """Создает экземпляр ReviewService"""
+    repo = RawReviewRepository(session)
     return ReviewService(broker, repo)
 
 
-# Маршруты
 @app.post(
-    "/publish-review",
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Опубликовать новый отзыв",
-    description="Принимает отзыв, публикует в Kafka и сохраняет в БД",
+    "/api/reviews",
+    response_model=RawReviewResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Создать новый отзыв",
 )
-async def publish_review(
-    review: Review, service: ReviewService = Depends(get_review_service)
+async def create_review(
+        review: ReviewCreate,
+        service: ReviewService = Depends(get_review_service)
 ):
+    """Создание нового отзыва"""
     try:
         return await service.create_review(review)
     except Exception as e:
@@ -95,3 +101,4 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("main:app", host=configs.HOST, port=configs.PORT, reload=True)
+

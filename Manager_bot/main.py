@@ -174,47 +174,6 @@ async def cmd_stop(message: Message):
     )
 
 
-@router.message(Command("stats"))
-async def cmd_stats(message: Message):
-    """Показать статистику подписчиков"""
-    stats = subscriber_storage.get_subscribers_count()
-
-    stats_text = f"""
-📊 <b>Статистика PulseAI Bot</b>
-
-👥 Всего подписчиков: {stats['total']}
-✅ Активных: {stats['active']}
-❌ Неактивных: {stats['inactive']}
-
-📅 Дата запуска: {datetime.now().strftime('%d.%m.%Y %H:%M')}
-"""
-
-    await message.answer(stats_text)
-
-
-@router.message(Command("help"))
-async def cmd_help(message: Message):
-    """Помощь по командам"""
-    help_text = """
-📋 <b>Доступные команды:</b>
-
-/start - Подписаться на уведомления
-/stop - Отписаться от уведомлений  
-/stats - Показать статистику бота
-/help - Показать эту справку
-
-🔔 <b>Типы уведомлений:</b>
-• Негативные отзывы с высоким приоритетом
-• Резкие изменения трендов
-• Проблемы по конкретным продуктам
-• Региональные репутационные риски
-
-💬 По всем вопросам: @support_username
-"""
-
-    await message.answer(help_text)
-
-
 # Подключаем роутер к диспетчеру
 dp.include_router(router)
 
@@ -284,22 +243,18 @@ async def send_to_all_subscribers(text: str, parse_mode: str = "HTML", disable_n
             sent_count += 1
 
         except TelegramForbiddenError:
-            # Пользователь заблокировал бота
             subscriber_storage.deactivate_subscriber(user_id)
             failed_count += 1
             failed_users.append({"user_id": user_id, "error": "bot_blocked"})
 
         except TelegramBadRequest as e:
-            # Другая ошибка API Telegram
             failed_count += 1
             failed_users.append({"user_id": user_id, "error": str(e)})
 
         except Exception as e:
-            # Неожиданная ошибка
             failed_count += 1
             failed_users.append({"user_id": user_id, "error": f"unexpected: {str(e)}"})
 
-        # Небольшая задержка между отправками
         await asyncio.sleep(0.05)
 
     logger.info(f"Уведомление отправлено: {sent_count} успешно, {failed_count} неудачно")
@@ -310,7 +265,7 @@ async def send_to_all_subscribers(text: str, parse_mode: str = "HTML", disable_n
         "sent_count": sent_count,
         "failed_count": failed_count,
         "total_subscribers": len(active_subscribers),
-        "failed_users": failed_users[:10]  # Показываем только первые 10 ошибок
+        "failed_users": failed_users[:10]
     }
 
 
@@ -332,70 +287,6 @@ async def send_notification_endpoint(payload: NotificationPayload, background_ta
         raise HTTPException(status_code=500, detail=f"Ошибка отправки уведомления: {str(e)}")
 
 
-@app.post("/alert/negative-review")
-async def send_negative_review_alert(payload: ReviewAlertPayload):
-    """Отправить алерт о негативном отзыве всем подписчикам"""
-
-    alert_text = f"🚨 <b>Негативный отзыв обнаружен!</b>\n\n"
-    alert_text += f"📝 <b>Источник:</b> {payload.source}\n"
-
-    if payload.region:
-        alert_text += f"🗺️ <b>Регион:</b> {payload.region}\n"
-
-    if payload.product:
-        alert_text += f"🏦 <b>Продукт:</b> {payload.product}\n"
-
-    alert_text += f"⭐ <b>Оценка:</b> {payload.rating}\n\n"
-    alert_text += f"💬 <b>Текст отзыва:</b>\n<i>{payload.review_text[:500]}{'...' if len(payload.review_text) > 500 else ''}</i>\n\n"
-
-    if payload.review_url:
-        alert_text += f"🔗 <a href='{payload.review_url}'>Перейти к отзыву</a>\n\n"
-
-    alert_text += f"⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-
-    result = await send_to_all_subscribers(alert_text)
-
-    return {
-        "alert_type": "negative_review",
-        **result
-    }
-
-
-@app.post("/alert/trend-change")
-async def send_trend_alert(payload: TrendAlertPayload):
-    """Отправить алерт об изменении трендов всем подписчикам"""
-
-    trend_emojis = {
-        "positive_spike": "📈",
-        "negative_spike": "📉",
-        "volume_drop": "⚠️"
-    }
-
-    trend_texts = {
-        "positive_spike": "Резкий рост позитивных отзывов",
-        "negative_spike": "Резкий рост негативных отзывов",
-        "volume_drop": "Резкое падение активности"
-    }
-
-    emoji = trend_emojis.get(payload.trend_type, "📊")
-    trend_text = trend_texts.get(payload.trend_type, "Изменение тренда")
-
-    alert_text = f"{emoji} <b>{trend_text}</b>\n\n"
-    alert_text += f"🏦 <b>Продукт:</b> {payload.product}\n"
-    alert_text += f"🗺️ <b>Регион:</b> {payload.region}\n"
-    alert_text += f"📊 <b>Изменение:</b> {payload.change_percentage:+.1f}%\n"
-    alert_text += f"⏰ <b>Период:</b> {payload.period}\n\n"
-    alert_text += f"🕒 <b>Время алерта:</b> {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-
-    result = await send_to_all_subscribers(alert_text)
-
-    return {
-        "alert_type": "trend_change",
-        "trend_type": payload.trend_type,
-        **result
-    }
-
-
 # ========== ЗАПУСК ПРИЛОЖЕНИЯ ==========
 
 async def start_polling():
@@ -411,15 +302,11 @@ async def start_polling():
 async def startup_event():
     """Инициализация при запуске"""
     try:
-        # Проверяем бота
         bot_info = await bot.get_me()
         logger.info(f"Бот запущен: @{bot_info.username} (ID: {bot_info.id})")
 
-        # Загружаем подписчиков
         stats = subscriber_storage.get_subscribers_count()
         logger.info(f"Загружено подписчиков: {stats['active']} активных из {stats['total']}")
-
-        # Запускаем polling в фоне
         asyncio.create_task(start_polling())
 
     except Exception as e:

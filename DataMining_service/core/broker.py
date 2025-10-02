@@ -1,6 +1,6 @@
 from faststream.kafka import KafkaBroker
 from typing import Optional, Any
-from core.config import configs
+from DataMining_service.core.config import configs
 import json
 import asyncio
 
@@ -55,11 +55,9 @@ class KafkaBrokerManager:
             await self.connect()
 
         try:
-            # Сериализация сообщения
             if not isinstance(message, (str, bytes)):
                 message = json.dumps(message, ensure_ascii=False, default=str)
 
-            # Подготовка ключа
             if key is not None and isinstance(key, str):
                 key = key.encode("utf-8")
 
@@ -69,7 +67,6 @@ class KafkaBrokerManager:
 
         except Exception as e:
             print(f"Ошибка публикации в Kafka: {e}")
-            # Попытка переподключения при ошибке
             self._is_started = False
             raise
 
@@ -91,13 +88,12 @@ class KafkaBrokerManager:
         """Деструктор для принудительной очистки"""
         if hasattr(self, "_broker") and self._broker and self._is_started:
             try:
-                # Создаем новый event loop если его нет
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    # Если loop уже запущен, создаем задачу
+
                     asyncio.create_task(self.close())
                 else:
-                    # Если loop не запущен, запускаем синхронно
+
                     loop.run_until_complete(self.close())
             except Exception:
-                pass  # Игнорируем ошибки в деструкторе
+                pass
