@@ -1,14 +1,21 @@
 import asyncio
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-
 from Integration_service.repository import ReviewAnalyticsRepository
 from Integration_service.schemas.processed_review import ReviewFilters, SourceAnalyticsFilters, ProductsAnalysisFilters
+from Integration_service.core.database import async_session
 
 
 class DashboardService:
     def __init__(self, analytics_repo: ReviewAnalyticsRepository):
         self.analytics_repo = analytics_repo
+
+    async def _with_new_session(self, method_name, *args, **kwargs):
+        """Выполнить метод репозитория с новой сессией"""
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            method = getattr(repo, method_name)
+            return await method(*args, **kwargs)
 
     async def get_dashboard_summary(
             self,
@@ -17,17 +24,17 @@ class DashboardService:
         """Получить основную сводку дашборда"""
 
         base_tasks = [
-            self.analytics_repo.get_total_reviews_count(filters),
-            self.analytics_repo.get_sentiment_distribution(filters),
-            self.analytics_repo.get_gender_distribution(filters),
-            self.analytics_repo.get_source_distribution(filters),
-            self.analytics_repo.get_growth_metrics(period_hours=24)
+            self._with_new_session('get_total_reviews_count', filters),
+            self._with_new_session('get_sentiment_distribution', filters),
+            self._with_new_session('get_gender_distribution', filters),
+            self._with_new_session('get_source_distribution', filters),
+            self._with_new_session('get_growth_metrics', period_hours=24)
         ]
 
         base_results = await asyncio.gather(*base_tasks)
 
         additional_tasks = [
-            self.analytics_repo.get_recent_activity(minutes_back=60, limit=10),
+            self._with_new_session('get_recent_activity', minutes_back=60, limit=10),
             self._get_quick_insights(filters),
             self._get_performance_metrics()
         ]
@@ -49,19 +56,19 @@ class DashboardService:
             "last_updated": datetime.now().isoformat()
         }
 
-    # ==========  МЕТОДЫ ДЛЯ ИСТОЧНИКОВ ==========
+    # ========== МЕТОДЫ ДЛЯ ИСТОЧНИКОВ ==========
 
     async def get_sources_dashboard_statistics(
             self,
             filters: SourceAnalyticsFilters
     ) -> Dict[str, Any]:
         """Получить упрощенную статистику по источникам для дашборда"""
-
-        sources_data = await self.analytics_repo.get_sources_sentiment_statistics(filters)
-
-        return {
-            "sources": sources_data
-        }
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            sources_data = await repo.get_sources_sentiment_statistics(filters)
+            return {
+                "sources": sources_data
+            }
 
     def _classify_period_length(self, days: int) -> str:
         """Классифицировать длительность периода"""
@@ -87,7 +94,6 @@ class DashboardService:
         # Доминирующий источник
         top_source = max(sources_data, key=lambda x: x['total_reviews'])
         top_share = (top_source['total_reviews'] / total_reviews * 100)
-
         if top_share > 50:
             insights.append(
                 f"Источник '{top_source['source']}' доминирует в регионе {region_code} с долей {top_share:.1f}%")
@@ -101,42 +107,49 @@ class DashboardService:
             filters: Optional[ReviewFilters] = None,
     ) -> Dict[str, Any]:
         """Получить полную статистику по регионам и продуктам для дашборда"""
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            regions_products_data = await repo.get_regions_products_sentiment_statistics(filters)
 
-        regions_products_data = await self.analytics_repo.get_regions_products_sentiment_statistics(
-            filters )
+            if not regions_products_data:
+                return {
+                    'regions_products': [],
+                    'summary': {},
+                    'analytics': {},
+                    'timestamp': datetime.now().isoformat()
+                }
 
-        if not regions_products_data:
+            regions_dict = {}
+            for item in regions_products_data:
+                region_key = item['region_code']
+                if region_key not in regions_dict:
+                    regions_dict[region_key] = []
+                regions_dict[region_key].append(item)
+
+            # Присваиваем ранги
+            for region_products in regions_dict.values():
+                sorted_products = sorted(region_products, key=lambda x: x['total_reviews'], reverse=True)
+                for i, product in enumerate(sorted_products, 1):
+                    product['regional_product_rank'] = i
+
+            # Общая статистика
+            total_combinations = len(regions_products_data)
+            total_reviews = sum(item['total_reviews'] for item in regions_products_data)
+            total_positive = sum(item['positive_reviews'] for item in regions_products_data)
+            total_negative = sum(item['negative_reviews'] for item in regions_products_data)
+            total_neutral = sum(item['neutral_reviews'] for item in regions_products_data)
+
             return {
-                'regions_products': [],
-                'summary': {},
-                'analytics': {},
+                'regions_products': regions_products_data,
+                'summary': {
+                    'total_combinations': total_combinations,
+                    'total_reviews': total_reviews,
+                    'total_positive': total_positive,
+                    'total_negative': total_negative,
+                    'total_neutral': total_neutral
+                },
                 'timestamp': datetime.now().isoformat()
             }
-
-        regions_dict = {}
-        for item in regions_products_data:
-            region_key = item['region_code']
-            if region_key not in regions_dict:
-                regions_dict[region_key] = []
-            regions_dict[region_key].append(item)
-
-        # Присваиваем ранги
-        for region_products in regions_dict.values():
-            sorted_products = sorted(region_products, key=lambda x: x['total_reviews'], reverse=True)
-            for i, product in enumerate(sorted_products, 1):
-                product['regional_product_rank'] = i
-
-        # Общая статистика
-        total_combinations = len(regions_products_data)
-        total_reviews = sum(item['total_reviews'] for item in regions_products_data)
-        total_positive = sum(item['positive_reviews'] for item in regions_products_data)
-        total_negative = sum(item['negative_reviews'] for item in regions_products_data)
-        total_neutral = sum(item['neutral_reviews'] for item in regions_products_data)
-
-
-        return {
-            'regions_products': regions_products_data,
-        }
 
     # ========== НОВЫЕ МЕТОДЫ ДЛЯ ТЕПЛОВОЙ КАРТЫ ==========
 
@@ -145,37 +158,37 @@ class DashboardService:
             sentiment_filter: str,
     ) -> Dict[str, Any]:
         """Получить регионы с фильтром по типу sentiment для тепловой карты"""
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            regions_data = await repo.get_regions_with_filtered_sentiment_heatmap(sentiment_filter)
 
-        regions_data = await self.analytics_repo.get_regions_with_filtered_sentiment_heatmap(
-            sentiment_filter
-        )
-
-        # Цветовая схема в зависимости от выбранного sentiment
-        color_schemes = {
-            'positive': {
-                'name': 'Зеленые оттенки',
-                'base_color': '(34 139 34)',
-                'description': 'Интенсивность зеленого показывает концентрацию позитивных отзывов'
-            },
-            'negative': {
-                'name': 'Красные оттенки',
-                'base_color': '(220 20 60)',
-                'description': 'Интенсивность красного показывает концентрацию негативных отзывов'
-            },
-            'neutral': {
-                'name': 'Желтые оттенки',
-                'base_color': '(255 215 0)',
-                'description': 'Интенсивность желтого показывает концентрацию нейтральных отзывов'
+            # Цветовая схема в зависимости от выбранного sentiment
+            color_schemes = {
+                'positive': {
+                    'name': 'Зеленые оттенки',
+                    'base_color': '(34 139 34)',
+                    'description': 'Интенсивность зеленого показывает концентрацию позитивных отзывов'
+                },
+                'negative': {
+                    'name': 'Красные оттенки',
+                    'base_color': '(220 20 60)',
+                    'description': 'Интенсивность красного показывает концентрацию негативных отзывов'
+                },
+                'neutral': {
+                    'name': 'Желтые оттенки',
+                    'base_color': '(255 215 0)',
+                    'description': 'Интенсивность желтого показывает концентрацию нейтральных отзывов'
+                }
             }
-        }
-        response = {
-            'regions': regions_data,
-            'total_regions': len(regions_data),
-            'sentiment_filter': sentiment_filter,
-            'color_scheme': color_schemes.get(sentiment_filter, color_schemes['positive']),
-        }
 
-        return response
+            response = {
+                'regions': regions_data,
+                'total_regions': len(regions_data),
+                'sentiment_filter': sentiment_filter,
+                'color_scheme': color_schemes.get(sentiment_filter, color_schemes['positive']),
+            }
+
+            return response
 
     # ========== СТАРЫЕ МЕТОДЫ (СОХРАНЕНЫ ДЛЯ СОВМЕСТИМОСТИ) ==========
 
@@ -185,38 +198,40 @@ class DashboardService:
             limit: int = 20
     ) -> Dict[str, Any]:
         """Получить региональную аналитику"""
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
 
-        base_tasks = [
-            self.analytics_repo.get_regional_stats(limit=limit),
-            self.analytics_repo.get_city_stats(region_code=region_code, limit=15)
-        ]
+            base_tasks = [
+                repo.get_regional_stats(limit=limit),
+                repo.get_city_stats(region_code=region_code, limit=15)
+            ]
 
-        if region_code:
-            region_filters = ReviewFilters(region_code=region_code)
-            base_tasks.extend([
-                self.analytics_repo.get_sentiment_distribution(region_filters),
-                self.analytics_repo.get_product_sentiment_analysis(10, region_filters)
-            ])
+            if region_code:
+                region_filters = ReviewFilters(region_code=region_code)
+                base_tasks.extend([
+                    repo.get_sentiment_distribution(region_filters),
+                    repo.get_product_sentiment_analysis(10, region_filters)
+                ])
 
-        results = await asyncio.gather(*base_tasks)
+            results = await asyncio.gather(*base_tasks)
 
-        dashboard_data = {
-            "regional_overview": {
-                "regional_stats": results[0],
-                "cities_analysis": results[1]
-            },
-            "regional_insights": await self._generate_regional_insights(results[0]),
-            "focused_region": region_code,
-            "last_updated": datetime.now().isoformat()
-        }
-
-        if region_code and len(results) > 2:
-            dashboard_data["region_details"] = {
-                "sentiment_distribution": results[2],
-                "top_products": results[3]
+            dashboard_data = {
+                "regional_overview": {
+                    "regional_stats": results[0],
+                    "cities_analysis": results[1]
+                },
+                "regional_insights": await self._generate_regional_insights(results[0]),
+                "focused_region": region_code,
+                "last_updated": datetime.now().isoformat()
             }
 
-        return dashboard_data
+            if region_code and len(results) > 2:
+                dashboard_data["region_details"] = {
+                    "sentiment_distribution": results[2],
+                    "top_products": results[3]
+                }
+
+            return dashboard_data
 
     async def get_gender_analysis_dashboard(
             self,
@@ -227,73 +242,71 @@ class DashboardService:
             date_to: Optional[datetime] = None
     ) -> Dict[str, Any]:
         """Дашборд анализа по гендеру"""
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
 
-        # Получаем данные по гендеру
-        gender_data = await self.analytics_repo.get_gender_sentiment_analysis(
-            region_code=region_code,
-            city=city,
-            product=product,
-            date_from=date_from,
-            date_to=date_to
-        )
+            # Получаем данные по гендеру
+            gender_data = await repo.get_gender_sentiment_analysis(
+                region_code=region_code,
+                city=city,
+                product=product,
+                date_from=date_from,
+                date_to=date_to
+            )
 
-        if not gender_data:
+            if not gender_data:
+                return {
+                    "gender_analysis": [],
+                    "summary": {
+                        "total_genders": 0,
+                        "total_reviews": 0,
+                        "dominant_gender": None,
+                        "gender_balance": "no_data"
+                    },
+                    "insights": [],
+                    "timestamp": datetime.now().isoformat()
+                }
+
+            total_reviews = sum(item["total_reviews"] for item in gender_data)
+            dominant_gender = max(gender_data, key=lambda x: x["total_reviews"])["gender"] if gender_data else None
+
+            if len(gender_data) == 2:
+                male_count = next((item["total_reviews"] for item in gender_data if item["gender_raw"] == "М"), 0)
+                female_count = next((item["total_reviews"] for item in gender_data if item["gender_raw"] == "Ж"), 0)
+                if abs(male_count - female_count) / total_reviews <= 0.1:
+                    gender_balance = "balanced"
+                elif male_count > female_count:
+                    gender_balance = "male_dominant"
+                else:
+                    gender_balance = "female_dominant"
+            else:
+                gender_balance = "single_gender"
+
+            # Генерируем инсайты
+            insights = self._generate_gender_insights(gender_data, total_reviews)
+
             return {
-                "gender_analysis": [],
+                "gender_analysis": gender_data,
                 "summary": {
-                    "total_genders": 0,
-                    "total_reviews": 0,
-                    "dominant_gender": None,
-                    "gender_balance": "no_data"
+                    "total_genders": len(gender_data),
+                    "total_reviews": total_reviews,
+                    "dominant_gender": dominant_gender,
+                    "gender_balance": gender_balance
                 },
-                "insights": [],
+                "insights": insights,
+                "filters_applied": {
+                    "region_code": region_code,
+                    "city": city,
+                    "product": product,
+                    "date_from": date_from.isoformat() if date_from else None,
+                    "date_to": date_to.isoformat() if date_to else None
+                },
                 "timestamp": datetime.now().isoformat()
             }
-
-        # Вычисляем общую статистику
-        total_reviews = sum(item["total_reviews"] for item in gender_data)
-        dominant_gender = max(gender_data, key=lambda x: x["total_reviews"])["gender"] if gender_data else None
-
-        # Определяем баланс по гендеру
-        if len(gender_data) == 2:
-            male_count = next((item["total_reviews"] for item in gender_data if item["gender_raw"] == "М"), 0)
-            female_count = next((item["total_reviews"] for item in gender_data if item["gender_raw"] == "Ж"), 0)
-
-            if abs(male_count - female_count) / total_reviews <= 0.1:  # Разница менее 10%
-                gender_balance = "balanced"
-            elif male_count > female_count:
-                gender_balance = "male_dominant"
-            else:
-                gender_balance = "female_dominant"
-        else:
-            gender_balance = "single_gender"
-
-        # Генерируем инсайты
-        insights = self._generate_gender_insights(gender_data, total_reviews)
-
-        return {
-            "gender_analysis": gender_data,
-            "summary": {
-                "total_genders": len(gender_data),
-                "total_reviews": total_reviews,
-                "dominant_gender": dominant_gender,
-                "gender_balance": gender_balance
-            },
-            "insights": insights,
-            "filters_applied": {
-                "region_code": region_code,
-                "city": city,
-                "product": product,
-                "date_from": date_from.isoformat() if date_from else None,
-                "date_to": date_to.isoformat() if date_to else None
-            },
-            "timestamp": datetime.now().isoformat()
-        }
 
     def _generate_gender_insights(self, gender_data: List[Dict], total_reviews: int) -> List[Dict[str, str]]:
         """Генерация инсайтов по гендерному анализу"""
         insights = []
-
         if not gender_data:
             return insights
 
@@ -350,74 +363,77 @@ class DashboardService:
             analysis_type: str = "preferences"  # "preferences" или "comparison"
     ) -> Dict[str, Any]:
         """Дашборд анализа предпочтений по продуктам у мужчин и женщин"""
-
         try:
-            if analysis_type == "comparison":
-                # Сравнительный анализ
-                comparison_result = await self.analytics_repo.get_gender_product_comparison(
-                    region_code=region_code,
-                    city=city,
-                    date_from=date_from,
-                    date_to=date_to,
-                    top_products=15
-                )
+            async with async_session() as session:
+                repo = ReviewAnalyticsRepository(session)
 
-                return {
-                    "analysis_type": "comparison",
-                    "comparison_data": comparison_result["comparison_data"],
-                    "summary": comparison_result["summary"],
-                    "insights": self._generate_gender_product_insights(comparison_result["comparison_data"]),
-                    "filters_applied": {
-                        "region_code": region_code,
-                        "city": city,
-                        "date_from": date_from.isoformat() if date_from else None,
-                        "date_to": date_to.isoformat() if date_to else None
-                    },
-                    "timestamp": datetime.now().isoformat()
-                }
-            else:
-                # Детальный анализ предпочтений
-                preferences_data = await self.analytics_repo.get_gender_product_preferences(
-                    region_code=region_code,
-                    city=city,
-                    date_from=date_from,
-                    date_to=date_to,
-                    min_reviews=5
-                )
+                if analysis_type == "comparison":
+                    # Сравнительный анализ
+                    comparison_result = await repo.get_gender_product_comparison(
+                        region_code=region_code,
+                        city=city,
+                        date_from=date_from,
+                        date_to=date_to,
+                        top_products=15
+                    )
 
-                # Группируем по полу
-                male_products = [item for item in preferences_data if item["gender_raw"] == "М"]
-                female_products = [item for item in preferences_data if item["gender_raw"] == "Ж"]
+                    return {
+                        "analysis_type": "comparison",
+                        "comparison_data": comparison_result["comparison_data"],
+                        "summary": comparison_result["summary"],
+                        "insights": self._generate_gender_product_insights(comparison_result["comparison_data"]),
+                        "filters_applied": {
+                            "region_code": region_code,
+                            "city": city,
+                            "date_from": date_from.isoformat() if date_from else None,
+                            "date_to": date_to.isoformat() if date_to else None
+                        },
+                        "timestamp": datetime.now().isoformat()
+                    }
 
-                # Топ продукты для каждого пола
-                male_top = sorted(male_products, key=lambda x: x["total_reviews"], reverse=True)[:10]
-                female_top = sorted(female_products, key=lambda x: x["total_reviews"], reverse=True)[:10]
+                else:
+                    # Детальный анализ предпочтений
+                    preferences_data = await repo.get_gender_product_preferences(
+                        region_code=region_code,
+                        city=city,
+                        date_from=date_from,
+                        date_to=date_to,
+                        min_reviews=5
+                    )
 
-                return {
-                    "analysis_type": "preferences",
-                    "male_preferences": {
-                        "top_products": male_top,
-                        "total_products": len(male_products),
-                        "total_reviews": sum(item["total_reviews"] for item in male_products),
-                        "avg_satisfaction": round(sum(item["satisfaction_score"] for item in male_products) / len(
-                            male_products) if male_products else 0, 3)
-                    },
-                    "female_preferences": {
-                        "top_products": female_top,
-                        "total_products": len(female_products),
-                        "total_reviews": sum(item["total_reviews"] for item in female_products),
-                        "avg_satisfaction": round(sum(item["satisfaction_score"] for item in female_products) / len(
-                            female_products) if female_products else 0, 3)
-                    },
-                    "insights": self._generate_preferences_insights(male_top, female_top),
-                    "filters_applied": {
-                        "region_code": region_code,
-                        "city": city,
-                        "date_from": date_from.isoformat() if date_from else None,
-                        "date_to": date_to.isoformat() if date_to else None
-                    },
-                    "timestamp": datetime.now().isoformat()
-                }
+                    # Группируем по полу
+                    male_products = [item for item in preferences_data if item["gender_raw"] == "М"]
+                    female_products = [item for item in preferences_data if item["gender_raw"] == "Ж"]
+
+                    # Топ продукты для каждого пола
+                    male_top = sorted(male_products, key=lambda x: x["total_reviews"], reverse=True)[:10]
+                    female_top = sorted(female_products, key=lambda x: x["total_reviews"], reverse=True)[:10]
+
+                    return {
+                        "analysis_type": "preferences",
+                        "male_preferences": {
+                            "top_products": male_top,
+                            "total_products": len(male_products),
+                            "total_reviews": sum(item["total_reviews"] for item in male_products),
+                            "avg_satisfaction": round(sum(item["satisfaction_score"] for item in male_products) / len(
+                                male_products) if male_products else 0, 3)
+                        },
+                        "female_preferences": {
+                            "top_products": female_top,
+                            "total_products": len(female_products),
+                            "total_reviews": sum(item["total_reviews"] for item in female_products),
+                            "avg_satisfaction": round(sum(item["satisfaction_score"] for item in female_products) / len(
+                                female_products) if female_products else 0, 3)
+                        },
+                        "insights": self._generate_preferences_insights(male_top, female_top),
+                        "filters_applied": {
+                            "region_code": region_code,
+                            "city": city,
+                            "date_from": date_from.isoformat() if date_from else None,
+                            "date_to": date_to.isoformat() if date_to else None
+                        },
+                        "timestamp": datetime.now().isoformat()
+                    }
 
         except Exception as e:
             return {
@@ -429,7 +445,6 @@ class DashboardService:
     def _generate_gender_product_insights(self, comparison_data: List[Dict]) -> List[Dict[str, str]]:
         """Генерация инсайтов для сравнительного анализа"""
         insights = []
-
         if not comparison_data:
             return insights
 
@@ -522,58 +537,59 @@ class DashboardService:
             filters: ProductsAnalysisFilters
     ) -> Dict[str, Any]:
         """Получить анализ продуктов по типам отзывов"""
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
 
-        # Конвертируем Pydantic модели в словари (без mapping)
-        products_filters = [
-            {"name": product.name, "type": product.type}  # type уже positive/negative/neutral
-            for product in filters.products
-        ]
+            # Конвертируем Pydantic модели в словари (без mapping)
+            products_filters = [
+                {"name": product.name, "type": product.type}  # type уже positive/negative/neutral
+                for product in filters.products
+            ]
 
-        # Получаем данные из репозитория
-        chart_data = await self.analytics_repo.get_products_sentiment_trends_data(
-            products_filters=products_filters,
-            date_from=filters.date_from,
-            date_to=filters.date_to,
-            region_code=filters.region_code,
-            city=filters.city
-        )
+            # Получаем данные из репозитория
+            chart_data = await repo.get_products_sentiment_trends_data(
+                products_filters=products_filters,
+                date_from=filters.date_from,
+                date_to=filters.date_to,
+                region_code=filters.region_code,
+                city=filters.city
+            )
 
-        # Дополнительная аналитика
-        total_products = len(filters.products)
-        date_range_days = (filters.date_to - filters.date_from).days
+            # Дополнительная аналитика
+            total_products = len(filters.products)
+            date_range_days = (filters.date_to - filters.date_from).days
 
-        # Определяем преобладающий тип анализа
-        sentiment_types = [product.type for product in filters.products]
-        most_common_sentiment = max(set(sentiment_types), key=sentiment_types.count)
+            # Определяем преобладающий тип анализа
+            sentiment_types = [product.type for product in filters.products]
+            most_common_sentiment = max(set(sentiment_types), key=sentiment_types.count)
 
-        return {
-            "chart_data": chart_data,
-            "analysis_info": {
-                "total_products_analyzed": total_products,
-                "date_range_days": date_range_days,
-                "period": f"{filters.date_from.strftime('%d.%m.%Y')} - {filters.date_to.strftime('%d.%m.%Y')}",
-                "most_analyzed_sentiment": most_common_sentiment,
-                "products_breakdown": [
-                    {
-                        "product": product.name,
-                        "analysis_type": product.type
-                    }
-                    for product in filters.products
-                ]
-            },
-            "filters_applied": {
-                "region_code": filters.region_code,
-                "city": filters.city,
-                "products_count": total_products
-            },
-            "chart_config": {
-                "title": f"Анализ продуктов: {', '.join([p.name for p in filters.products[:3]])}{'...' if total_products > 3 else ''}",
-                "subtitle": f"Период: {filters.date_from.strftime('%m.%Y')} - {filters.date_to.strftime('%m.%Y')}",
-                "data_points": len(chart_data) - 1 if chart_data else 0
-            },
-            "timestamp": datetime.now().isoformat()
-        }
-
+            return {
+                "chart_data": chart_data,
+                "analysis_info": {
+                    "total_products_analyzed": total_products,
+                    "date_range_days": date_range_days,
+                    "period": f"{filters.date_from.strftime('%d.%m.%Y')} - {filters.date_to.strftime('%d.%m.%Y')}",
+                    "most_analyzed_sentiment": most_common_sentiment,
+                    "products_breakdown": [
+                        {
+                            "product": product.name,
+                            "analysis_type": product.type
+                        }
+                        for product in filters.products
+                    ]
+                },
+                "filters_applied": {
+                    "region_code": filters.region_code,
+                    "city": filters.city,
+                    "products_count": total_products
+                },
+                "chart_config": {
+                    "title": f"Анализ продуктов: {', '.join([p.name for p in filters.products[:3]])}{'...' if total_products > 3 else ''}",
+                    "subtitle": f"Период: {filters.date_from.strftime('%m.%Y')} - {filters.date_to.strftime('%m.%Y')}",
+                    "data_points": len(chart_data) - 1 if chart_data else 0
+                },
+                "timestamp": datetime.now().isoformat()
+            }
 
     async def get_reviews_trends_chart_data(
             self,
@@ -585,64 +601,62 @@ class DashboardService:
             group_by: str = "day"
     ) -> Dict[str, Any]:
         """Получить данные для графика трендов отзывов"""
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
 
-        chart_data = await self.analytics_repo.get_reviews_trends_aggregated(
-            region_code=region_code,
-            city=city,
-            product=product,
-            date_from=date_from,
-            date_to=date_to,
-            group_by=group_by
-        )
+            chart_data = await repo.get_reviews_trends_aggregated(
+                region_code=region_code,
+                city=city,
+                product=product,
+                date_from=date_from,
+                date_to=date_to,
+                group_by=group_by
+            )
 
-        period_text = self._get_period_text(date_from, date_to)
+            period_text = self._get_period_text(date_from, date_to)
+            active_filters = []
+            if region_code:
+                active_filters.append(f"Регион: {region_code}")
+            if city:
+                active_filters.append(f"Город: {city}")
+            if product:
+                active_filters.append(f"Продукт: {product}")
 
-        active_filters = []
-        if region_code:
-            active_filters.append(f"Регион: {region_code}")
-        if city:
-            active_filters.append(f"Город: {city}")
-        if product:
-            active_filters.append(f"Продукт: {product}")
+            filters_text = " | ".join(active_filters) if active_filters else "Все данные"
 
-        filters_text = " | ".join(active_filters) if active_filters else "Все данные"
+            analytics = self._analyze_trends_data(chart_data)
 
-        analytics = self._analyze_trends_data(chart_data)
-
-        return {
-            "chart_data": chart_data,
-            "chart_config": {
-                "title": f"Динамика отзывов{' - ' + period_text if period_text else ''}",
-                "subtitle": filters_text,
-                "group_by": group_by,
-                "data_points": len(chart_data) - 1,
-            },
-            "analytics": analytics,
-            "filters_applied": {
-                "region_code": region_code,
-                "city": city,
-                "product": product,
-                "date_from": date_from.isoformat() if date_from else None,
-                "date_to": date_to.isoformat() if date_to else None,
-                "group_by": group_by
-            },
-            "timestamp": datetime.now().isoformat()
-        }
+            return {
+                "chart_data": chart_data,
+                "chart_config": {
+                    "title": f"Динамика отзывов{' - ' + period_text if period_text else ''}",
+                    "subtitle": filters_text,
+                    "group_by": group_by,
+                    "data_points": len(chart_data) - 1,
+                },
+                "analytics": analytics,
+                "filters_applied": {
+                    "region_code": region_code,
+                    "city": city,
+                    "product": product,
+                    "date_from": date_from.isoformat() if date_from else None,
+                    "date_to": date_to.isoformat() if date_to else None,
+                    "group_by": group_by
+                },
+                "timestamp": datetime.now().isoformat()
+            }
 
     def _get_period_text(self, date_from: Optional[datetime], date_to: Optional[datetime]) -> str:
         """Создать читаемый текст периода"""
         if not date_from and not date_to:
             return ""
-
         if date_from and date_to:
             return f"{date_from.strftime('%d.%m.%Y')} - {date_to.strftime('%d.%m.%Y')}"
         elif date_from:
             return f"с {date_from.strftime('%d.%m.%Y')}"
         elif date_to:
             return f"до {date_to.strftime('%d.%m.%Y')}"
-
         return ""
-
 
     def _analyze_trends_data(self, chart_data: List[List]) -> Dict[str, Any]:
         """Анализ данных трендов для получения инсайтов"""
@@ -679,104 +693,119 @@ class DashboardService:
 
     async def get_all_regions(self, include_cities: bool = False, ) -> Dict[str, Any]:
         """Получить все регионы"""
-        if include_cities:
-            regions_data = await self.analytics_repo.get_regions_hierarchy()
-            filtered_regions = [region for region in regions_data["regions"]]
-            regions_data["regions"] = filtered_regions
-            regions_data["total_regions"] = len(filtered_regions)
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
 
-            return {
-                "region_hierarchy": regions_data,
-                "include_cities": True,
-            }
-        else:
-            regions = await self.analytics_repo.get_unique_regions()
-            regions = [region for region in regions ]
-
-            return {
-                "regions": regions,
-                "total_regions": len(regions),
-                "include_cities": False,
-            }
+            if include_cities:
+                regions_data = await repo.get_regions_hierarchy()
+                filtered_regions = [region for region in regions_data["regions"]]
+                regions_data["regions"] = filtered_regions
+                regions_data["total_regions"] = len(filtered_regions)
+                return {
+                    "region_hierarchy": regions_data,
+                    "include_cities": True,
+                }
+            else:
+                regions = await repo.get_unique_regions()
+                regions = [region for region in regions]
+                return {
+                    "regions": regions,
+                    "total_regions": len(regions),
+                    "include_cities": False,
+                }
 
     async def get_region_codes_only(self) -> Dict[str, Any]:
         """Получить только коды регионов"""
-        region_codes = await self.analytics_repo.get_unique_region_codes()
-        formatted_codes = [{"value": code["region_code"], "label": code["region_code"], "count": code["reviews_count"]}
-                           for code in region_codes]
-
-        return {
-            "region_codes": region_codes,
-            "formatted_codes": formatted_codes,
-            "total_codes": len(region_codes),
-            "timestamp": datetime.now().isoformat()
-        }
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            region_codes = await repo.get_unique_region_codes()
+            formatted_codes = [
+                {"value": code["region_code"], "label": code["region_code"], "count": code["reviews_count"]}
+                for code in region_codes]
+            return {
+                "region_codes": region_codes,
+                "formatted_codes": formatted_codes,
+                "total_codes": len(region_codes),
+                "timestamp": datetime.now().isoformat()
+            }
 
     async def get_regions_sentiment_map(self, include_cities: bool = False) -> Dict[str, Any]:
         """Получить регионы с sentiment анализом для карты"""
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            regions_data = await repo.get_regions_with_sentiment_colors()
 
-        regions_data = await self.analytics_repo.get_regions_with_sentiment_colors()
+            if regions_data:
+                total_regions = len(regions_data)
+                positive_regions = len([r for r in regions_data if r["sentiment_score"] > 0.1])
+                negative_regions = len([r for r in regions_data if r["sentiment_score"] < -0.1])
+                best_region = max(regions_data, key=lambda x: x["sentiment_score"])
+                worst_region = min(regions_data, key=lambda x: x["sentiment_score"])
 
-        if regions_data:
-            total_regions = len(regions_data)
-            positive_regions = len([r for r in regions_data if r["sentiment_score"] > 0.1])
-            negative_regions = len([r for r in regions_data if r["sentiment_score"] < -0.1])
+                analytics = {
+                    "total_regions": total_regions,
+                    "positive_regions": positive_regions,
+                    "negative_regions": negative_regions,
+                    "best_region": best_region,
+                    "worst_region": worst_region
+                }
+            else:
+                analytics = {}
 
-            best_region = max(regions_data, key=lambda x: x["sentiment_score"])
-            worst_region = min(regions_data, key=lambda x: x["sentiment_score"])
-        else:
-            analytics = {}
+            response = {
+                "regions": regions_data,
+                "total_regions": len(regions_data),
+                "include_cities": include_cities,
+                "analytics": analytics,
+                "color_scheme": {"positive": "#228B22", "neutral": "#E2B007", "negative": "#FA8072"},
+            }
 
-        response = {
-            "regions": regions_data,
-            "total_regions": len(regions_data),
-            "include_cities": include_cities,
-            "color_scheme": {"positive": "#228B22", "neutral": "#E2B007", "negative": "#FA8072"},
-        }
-
-        return response
+            return response
 
     # ========== УТИЛИТЫ ==========
 
     async def _get_quick_insights(self, filters: Optional[ReviewFilters] = None) -> Dict[str, Any]:
         """Получить быстрые инсайты"""
-        sentiment_data = await self.analytics_repo.get_sentiment_distribution(filters)
-        total = sum(sentiment_data.values())
-        insights = []
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            sentiment_data = await repo.get_sentiment_distribution(filters)
+            total = sum(sentiment_data.values())
+            insights = []
 
-        if total > 0:
-            positive_rate = sentiment_data.get("positive", 0) / total
-            negative_rate = sentiment_data.get("negative", 0) / total
+            if total > 0:
+                positive_rate = sentiment_data.get("positive", 0) / total
+                negative_rate = sentiment_data.get("negative", 0) / total
 
-            if positive_rate > 0.7:
-                insights.append({"type": "positive",
-                                 "message": f"Высокий процент положительных отзывов: {positive_rate * 100:.1f}%",
-                                 "priority": "info"})
-            elif negative_rate > 0.3:
-                insights.append({"type": "warning", "message": f"Много негативных отзывов: {negative_rate * 100:.1f}%",
-                                 "priority": "warning"})
+                if positive_rate > 0.7:
+                    insights.append({"type": "positive",
+                                     "message": f"Высокий процент положительных отзывов: {positive_rate * 100:.1f}%",
+                                     "priority": "info"})
+                elif negative_rate > 0.3:
+                    insights.append(
+                        {"type": "warning", "message": f"Много негативных отзывов: {negative_rate * 100:.1f}%",
+                         "priority": "warning"})
 
-        return {
-            "insights": insights,
-            "insights_count": len(insights),
-            "data_quality": "good" if total > 100 else "limited"
-        }
+            return {
+                "insights": insights,
+                "insights_count": len(insights),
+                "data_quality": "good" if total > 100 else "limited"
+            }
 
     async def _get_performance_metrics(self) -> Dict[str, Any]:
         """Получить метрики производительности"""
-        regions_count = len(await self.analytics_repo.get_unique_regions())
-
-        return {
-            "data_freshness": "excellent",
-            "processing_speed": "fast",
-            "coverage": {"regions_covered": regions_count},
-            "data_completeness": 95.5
-        }
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            regions_count = len(await repo.get_unique_regions())
+            return {
+                "data_freshness": "excellent",
+                "processing_speed": "fast",
+                "coverage": {"regions_covered": regions_count},
+                "data_completeness": 95.5
+            }
 
     async def _generate_regional_insights(self, regional_stats: List[Dict]) -> List[Dict[str, Any]]:
         """Генерировать региональные инсайты"""
         insights = []
-
         if regional_stats:
             top_region = max(regional_stats, key=lambda x: x["total_count"])
             insights.append({
