@@ -151,21 +151,21 @@ def sync_ml_analysis(data):
 def process_ml_result(review_data: dict, ml_prediction: dict) -> dict:
     """
     Обработка результата ML и подготовка данных для БД
+    Берем ПЕРВЫЙ топик как product и ПЕРВЫЙ sentiment как rating
     """
     topics = ml_prediction.get("topics", [])
     sentiments = ml_prediction.get("sentiments", [])
 
-
     product = topics[0] if topics else None
 
-    rating = "neutral"  # По умолчанию
+    sentiment_to_english = {
+        "отрицательно": "negative",
+        "положительно": "positive",
+        "нейтрально": "neutral"
+    }
 
-    if "отрицательно" in sentiments:
-        rating = "negative"
-    elif all(s == "положительно" for s in sentiments) and len(sentiments) > 0:
-        rating = "positive"
-    elif "нейтрально" in sentiments:
-        rating = "neutral"
+    first_sentiment = sentiments[0] if sentiments else "нейтрально"
+    rating = sentiment_to_english.get(first_sentiment, "neutral")
 
     return {
         "text": review_data["text"],
@@ -197,6 +197,12 @@ async def process_raw_review(msg: RawReviewMessage):
             })
 
         ml_results = await analyze_sentiment_and_topics_batch(reviews_for_ml)
+        logger.info(f"✅ ML обработка завершена: {len(ml_results)} результатов")
+
+        ml_results_by_id = {}
+        for result in ml_results:
+            if isinstance(result, dict) and "id" in result:
+                ml_results_by_id[result["id"]] = result
 
         db_start_time = datetime.now()
         async for session in get_async_session():
@@ -206,7 +212,8 @@ async def process_raw_review(msg: RawReviewMessage):
 
             for idx, review_data in enumerate(msg.data):
                 try:
-                    ml_prediction = ml_results[idx] if idx < len(ml_results) else {}
+
+                    ml_prediction = ml_results_by_id.get(idx, {})
                     processed_data = process_ml_result(review_data, ml_prediction)
 
                     result = await repo.add_processed_review(**processed_data)
@@ -233,6 +240,8 @@ async def process_raw_review(msg: RawReviewMessage):
 
         request_end_time = datetime.now()
         total_duration = (request_end_time - request_start_time).total_seconds()
+
+
     except Exception as e:
         logger.error(f"Критическая ошибка при обработке сообщения: {str(e)}")
         import traceback
@@ -275,7 +284,7 @@ app.add_middleware(
 app.include_router(kafka_router)
 
 
-@app.post("/predict", response_model=PredictResponse, description="Ручной прогон через ML модель", name="Получить прдесказание ML модели")
+@app.post("/predict", response_model=PredictResponse, summary="Ручной прогон через модель")
 async def predict_sentiment_and_topics(request: PredictRequest):
     """
     """
@@ -328,4 +337,3 @@ async def predict_sentiment_and_topics(request: PredictRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host=configs.HOST, port=configs.PORT, reload=True)
-
