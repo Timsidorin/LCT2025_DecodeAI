@@ -2,7 +2,7 @@
 import asyncio
 
 from DataMining_service.services.ReviewService import ReviewService
-from ReviewParser import ReviewMonitor as RM
+from DataMining_service.auto_parser.ReviewParser import ReviewMonitor as RM
 from DataMining_service.shemas.review import ReviewCreate
 from DataMining_service.core.database import get_async_session
 from DataMining_service.core.broker import KafkaBrokerManager

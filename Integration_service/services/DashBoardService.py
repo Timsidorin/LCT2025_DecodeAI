@@ -1,78 +1,74 @@
 import asyncio
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-
 from Integration_service.repository import ReviewAnalyticsRepository
 from Integration_service.schemas.processed_review import ReviewFilters, SourceAnalyticsFilters, ProductsAnalysisFilters
+from Integration_service.core.database import async_session
 
 
 class DashboardService:
     def __init__(self, analytics_repo: ReviewAnalyticsRepository):
         self.analytics_repo = analytics_repo
 
+    async def _with_new_session(self, method_name, *args, **kwargs):
+        """Выполнить метод репозитория с новой сессией"""
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            method = getattr(repo, method_name)
+            return await method(*args, **kwargs)
+
     async def get_dashboard_summary(
             self,
             filters: Optional[ReviewFilters] = None
     ) -> Dict[str, Any]:
+        """Получить основную сводку дашборда"""
 
-        try:
-            total_reviews = await self.analytics_repo.get_total_reviews_count(filters)
-            sentiment_distribution = await self.analytics_repo.get_sentiment_distribution(filters)
-            gender_distribution = await self.analytics_repo.get_gender_distribution(filters)
-            source_distribution = await self.analytics_repo.get_source_distribution(filters)
-            growth_metrics = await self.analytics_repo.get_growth_metrics(period_hours=24)
+        base_tasks = [
+            self._with_new_session('get_total_reviews_count', filters),
+            self._with_new_session('get_sentiment_distribution', filters),
+            self._with_new_session('get_gender_distribution', filters),
+            self._with_new_session('get_source_distribution', filters),
+            self._with_new_session('get_growth_metrics', period_hours=24)
+        ]
 
-            recent_activity = await self.analytics_repo.get_recent_activity(minutes_back=60, limit=10)
-            insights = await self._get_quick_insights(filters)
-            performance = await self._get_performance_metrics()
+        base_results = await asyncio.gather(*base_tasks)
 
-            return {
-                "overview": {
-                    "total_reviews": total_reviews,
-                    "sentiment_distribution": sentiment_distribution,
-                    "gender_distribution": gender_distribution,
-                    "source_distribution": source_distribution,
-                    "growth_metrics": growth_metrics,
-                    "recent_activity": recent_activity,
-                    "insights": insights,
-                    "performance": performance
-                },
-                "filters_applied": filters.model_dump(exclude_none=True) if filters else {},
-                "last_updated": datetime.now().isoformat()
-            }
+        additional_tasks = [
+            self._with_new_session('get_recent_activity', minutes_back=60, limit=10),
+            self._get_quick_insights(filters),
+            self._get_performance_metrics()
+        ]
 
-        except Exception as e:
-            return {
-                "overview": {
-                    "total_reviews": 0,
-                    "sentiment_distribution": {"positive": 0, "negative": 0, "neutral": 0},
-                    "gender_distribution": {"male": 0, "female": 0},
-                    "source_distribution": {},
-                    "growth_metrics": {"growth_24h": 0},
-                    "recent_activity": [],
-                    "insights": {"insights": [], "insights_count": 0},
-                    "performance": {"data_freshness": "limited"}
-                },
-                "filters_applied": filters.model_dump(exclude_none=True) if filters else {},
-                "last_updated": datetime.now().isoformat(),
-                "error": "Данные временно недоступны"
-            }
+        additional_results = await asyncio.gather(*additional_tasks)
 
-    # ==========  МЕТОДЫ ДЛЯ ИСТОЧНИКОВ ==========
+        return {
+            "overview": {
+                "total_reviews": base_results[0],
+                "sentiment_distribution": base_results[1],
+                "gender_distribution": base_results[2],
+                "source_distribution": base_results[3],
+                "growth_metrics": base_results[4],
+                "recent_activity": additional_results[0],
+                "insights": additional_results[1],
+                "performance": additional_results[2]
+            },
+            "filters_applied": filters.model_dump(exclude_none=True) if filters else {},
+            "last_updated": datetime.now().isoformat()
+        }
+
+    # ========== МЕТОДЫ ДЛЯ ИСТОЧНИКОВ ==========
 
     async def get_sources_dashboard_statistics(
             self,
             filters: SourceAnalyticsFilters
     ) -> Dict[str, Any]:
         """Получить упрощенную статистику по источникам для дашборда"""
-        try:
-            sources_data = await self.analytics_repo.get_sources_sentiment_statistics(filters)
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            sources_data = await repo.get_sources_sentiment_statistics(filters)
             return {
                 "sources": sources_data
             }
-        except Exception as e:
-            print(f"Ошибка в get_sources_dashboard_statistics: {str(e)}")
-            return {"sources": []}
 
     def _classify_period_length(self, days: int) -> str:
         """Классифицировать длительность периода"""
@@ -98,7 +94,6 @@ class DashboardService:
         # Доминирующий источник
         top_source = max(sources_data, key=lambda x: x['total_reviews'])
         top_share = (top_source['total_reviews'] / total_reviews * 100)
-
         if top_share > 50:
             insights.append(
                 f"Источник '{top_source['source']}' доминирует в регионе {region_code} с долей {top_share:.1f}%")
@@ -112,8 +107,9 @@ class DashboardService:
             filters: Optional[ReviewFilters] = None,
     ) -> Dict[str, Any]:
         """Получить полную статистику по регионам и продуктам для дашборда"""
-        try:
-            regions_products_data = await self.analytics_repo.get_regions_products_sentiment_statistics(filters)
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            regions_products_data = await repo.get_regions_products_sentiment_statistics(filters)
 
             if not regions_products_data:
                 return {
@@ -136,15 +132,23 @@ class DashboardService:
                 for i, product in enumerate(sorted_products, 1):
                     product['regional_product_rank'] = i
 
+            # Общая статистика
+            total_combinations = len(regions_products_data)
+            total_reviews = sum(item['total_reviews'] for item in regions_products_data)
+            total_positive = sum(item['positive_reviews'] for item in regions_products_data)
+            total_negative = sum(item['negative_reviews'] for item in regions_products_data)
+            total_neutral = sum(item['neutral_reviews'] for item in regions_products_data)
+
             return {
                 'regions_products': regions_products_data,
-            }
-        except Exception as e:
-            print(f"Ошибка в get_regions_products_dashboard_statistics: {str(e)}")
-            return {
-                'regions_products': [],
-                'timestamp': datetime.now().isoformat(),
-                'error': 'Данные недоступны'
+                'summary': {
+                    'total_combinations': total_combinations,
+                    'total_reviews': total_reviews,
+                    'total_positive': total_positive,
+                    'total_negative': total_negative,
+                    'total_neutral': total_neutral
+                },
+                'timestamp': datetime.now().isoformat()
             }
 
     # ========== НОВЫЕ МЕТОДЫ ДЛЯ ТЕПЛОВОЙ КАРТЫ ==========
@@ -154,8 +158,9 @@ class DashboardService:
             sentiment_filter: str,
     ) -> Dict[str, Any]:
         """Получить регионы с фильтром по типу sentiment для тепловой карты"""
-        try:
-            regions_data = await self.analytics_repo.get_regions_with_filtered_sentiment_heatmap(sentiment_filter)
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            regions_data = await repo.get_regions_with_filtered_sentiment_heatmap(sentiment_filter)
 
             # Цветовая схема в зависимости от выбранного sentiment
             color_schemes = {
@@ -176,65 +181,57 @@ class DashboardService:
                 }
             }
 
-            return {
+            response = {
                 'regions': regions_data,
                 'total_regions': len(regions_data),
                 'sentiment_filter': sentiment_filter,
                 'color_scheme': color_schemes.get(sentiment_filter, color_schemes['positive']),
             }
-        except Exception as e:
-            print(f"Ошибка в get_regions_sentiment_heatmap_filtered: {str(e)}")
-            return {
-                'regions': [],
-                'total_regions': 0,
-                'sentiment_filter': sentiment_filter,
-                'error': 'Данные недоступны'
-            }
 
-    # ========== ИСПРАВЛЕННЫЕ МЕТОДЫ ==========
+            return response
+
+    # ========== СТАРЫЕ МЕТОДЫ (СОХРАНЕНЫ ДЛЯ СОВМЕСТИМОСТИ) ==========
 
     async def get_regional_dashboard(
             self,
             region_code: Optional[str] = None,
             limit: int = 20
     ) -> Dict[str, Any]:
-        """ИСПРАВЛЕННАЯ версия - последовательные вызовы"""
-        try:
-            # Заменяем gather() на последовательные вызовы
-            regional_stats = await self.analytics_repo.get_regional_stats(limit=limit)
-            cities_analysis = await self.analytics_repo.get_city_stats(region_code=region_code, limit=15)
+        """Получить региональную аналитику"""
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+
+            base_tasks = [
+                repo.get_regional_stats(limit=limit),
+                repo.get_city_stats(region_code=region_code, limit=15)
+            ]
+
+            if region_code:
+                region_filters = ReviewFilters(region_code=region_code)
+                base_tasks.extend([
+                    repo.get_sentiment_distribution(region_filters),
+                    repo.get_product_sentiment_analysis(10, region_filters)
+                ])
+
+            results = await asyncio.gather(*base_tasks)
 
             dashboard_data = {
                 "regional_overview": {
-                    "regional_stats": regional_stats,
-                    "cities_analysis": cities_analysis
+                    "regional_stats": results[0],
+                    "cities_analysis": results[1]
                 },
-                "regional_insights": await self._generate_regional_insights(regional_stats),
+                "regional_insights": await self._generate_regional_insights(results[0]),
                 "focused_region": region_code,
                 "last_updated": datetime.now().isoformat()
             }
 
-            if region_code:
-                region_filters = ReviewFilters(region_code=region_code)
-                sentiment_distribution = await self.analytics_repo.get_sentiment_distribution(region_filters)
-                product_analysis = await self.analytics_repo.get_product_sentiment_analysis(10, region_filters)
-
+            if region_code and len(results) > 2:
                 dashboard_data["region_details"] = {
-                    "sentiment_distribution": sentiment_distribution,
-                    "top_products": product_analysis
+                    "sentiment_distribution": results[2],
+                    "top_products": results[3]
                 }
 
             return dashboard_data
-
-        except Exception as e:
-            print(f"Ошибка в get_regional_dashboard: {str(e)}")
-            return {
-                "regional_overview": {"regional_stats": [], "cities_analysis": []},
-                "regional_insights": [],
-                "focused_region": region_code,
-                "last_updated": datetime.now().isoformat(),
-                "error": "Данные недоступны"
-            }
 
     async def get_gender_analysis_dashboard(
             self,
@@ -245,9 +242,11 @@ class DashboardService:
             date_to: Optional[datetime] = None
     ) -> Dict[str, Any]:
         """Дашборд анализа по гендеру"""
-        try:
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+
             # Получаем данные по гендеру
-            gender_data = await self.analytics_repo.get_gender_sentiment_analysis(
+            gender_data = await repo.get_gender_sentiment_analysis(
                 region_code=region_code,
                 city=city,
                 product=product,
@@ -268,16 +267,13 @@ class DashboardService:
                     "timestamp": datetime.now().isoformat()
                 }
 
-            # Вычисляем общую статистику
             total_reviews = sum(item["total_reviews"] for item in gender_data)
             dominant_gender = max(gender_data, key=lambda x: x["total_reviews"])["gender"] if gender_data else None
 
-            # Определяем баланс по гендеру
             if len(gender_data) == 2:
                 male_count = next((item["total_reviews"] for item in gender_data if item["gender_raw"] == "М"), 0)
                 female_count = next((item["total_reviews"] for item in gender_data if item["gender_raw"] == "Ж"), 0)
-
-                if abs(male_count - female_count) / total_reviews <= 0.1:  # Разница менее 10%
+                if abs(male_count - female_count) / total_reviews <= 0.1:
                     gender_balance = "balanced"
                 elif male_count > female_count:
                     gender_balance = "male_dominant"
@@ -307,21 +303,10 @@ class DashboardService:
                 },
                 "timestamp": datetime.now().isoformat()
             }
-        except Exception as e:
-            print(f"Ошибка в get_gender_analysis_dashboard: {str(e)}")
-            return {
-                "gender_analysis": [],
-                "summary": {"total_genders": 0, "total_reviews": 0, "dominant_gender": None,
-                            "gender_balance": "no_data"},
-                "insights": [],
-                "timestamp": datetime.now().isoformat(),
-                "error": "Данные недоступны"
-            }
 
     def _generate_gender_insights(self, gender_data: List[Dict], total_reviews: int) -> List[Dict[str, str]]:
         """Генерация инсайтов по гендерному анализу"""
         insights = []
-
         if not gender_data:
             return insights
 
@@ -369,15 +354,192 @@ class DashboardService:
 
         return insights
 
-    # Остальные методы остаются без изменений...
-    # (продолжение следует с остальными методами)
+    async def get_gender_product_preferences_dashboard(
+            self,
+            region_code: Optional[str] = None,
+            city: Optional[str] = None,
+            date_from: Optional[datetime] = None,
+            date_to: Optional[datetime] = None,
+            analysis_type: str = "preferences"  # "preferences" или "comparison"
+    ) -> Dict[str, Any]:
+        """Дашборд анализа предпочтений по продуктам у мужчин и женщин"""
+        try:
+            async with async_session() as session:
+                repo = ReviewAnalyticsRepository(session)
+
+                if analysis_type == "comparison":
+                    # Сравнительный анализ
+                    comparison_result = await repo.get_gender_product_comparison(
+                        region_code=region_code,
+                        city=city,
+                        date_from=date_from,
+                        date_to=date_to,
+                        top_products=15
+                    )
+
+                    return {
+                        "analysis_type": "comparison",
+                        "comparison_data": comparison_result["comparison_data"],
+                        "summary": comparison_result["summary"],
+                        "insights": self._generate_gender_product_insights(comparison_result["comparison_data"]),
+                        "filters_applied": {
+                            "region_code": region_code,
+                            "city": city,
+                            "date_from": date_from.isoformat() if date_from else None,
+                            "date_to": date_to.isoformat() if date_to else None
+                        },
+                        "timestamp": datetime.now().isoformat()
+                    }
+
+                else:
+                    # Детальный анализ предпочтений
+                    preferences_data = await repo.get_gender_product_preferences(
+                        region_code=region_code,
+                        city=city,
+                        date_from=date_from,
+                        date_to=date_to,
+                        min_reviews=5
+                    )
+
+                    # Группируем по полу
+                    male_products = [item for item in preferences_data if item["gender_raw"] == "М"]
+                    female_products = [item for item in preferences_data if item["gender_raw"] == "Ж"]
+
+                    # Топ продукты для каждого пола
+                    male_top = sorted(male_products, key=lambda x: x["total_reviews"], reverse=True)[:10]
+                    female_top = sorted(female_products, key=lambda x: x["total_reviews"], reverse=True)[:10]
+
+                    return {
+                        "analysis_type": "preferences",
+                        "male_preferences": {
+                            "top_products": male_top,
+                            "total_products": len(male_products),
+                            "total_reviews": sum(item["total_reviews"] for item in male_products),
+                            "avg_satisfaction": round(sum(item["satisfaction_score"] for item in male_products) / len(
+                                male_products) if male_products else 0, 3)
+                        },
+                        "female_preferences": {
+                            "top_products": female_top,
+                            "total_products": len(female_products),
+                            "total_reviews": sum(item["total_reviews"] for item in female_products),
+                            "avg_satisfaction": round(sum(item["satisfaction_score"] for item in female_products) / len(
+                                female_products) if female_products else 0, 3)
+                        },
+                        "insights": self._generate_preferences_insights(male_top, female_top),
+                        "filters_applied": {
+                            "region_code": region_code,
+                            "city": city,
+                            "date_from": date_from.isoformat() if date_from else None,
+                            "date_to": date_to.isoformat() if date_to else None
+                        },
+                        "timestamp": datetime.now().isoformat()
+                    }
+
+        except Exception as e:
+            return {
+                "analysis_type": analysis_type,
+                "error": f"Ошибка анализа предпочтений: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }
+
+    def _generate_gender_product_insights(self, comparison_data: List[Dict]) -> List[Dict[str, str]]:
+        """Генерация инсайтов для сравнительного анализа"""
+        insights = []
+        if not comparison_data:
+            return insights
+
+        # Топ продукт по популярности
+        top_product = max(comparison_data, key=lambda x: x["total_reviews"])
+        insights.append({
+            "type": "popularity",
+            "message": f"Самый обсуждаемый продукт: {top_product['product']} ({top_product['total_reviews']} отзывов)",
+            "priority": "info"
+        })
+
+        # Анализ гендерного баланса
+        balanced = len([item for item in comparison_data if item["gender_balance"] == "balanced"])
+        male_preferred = len([item for item in comparison_data if item["gender_balance"] == "male_preferred"])
+        female_preferred = len([item for item in comparison_data if item["gender_balance"] == "female_preferred"])
+
+        if balanced > male_preferred and balanced > female_preferred:
+            insights.append({
+                "type": "balance",
+                "message": f"Большинство продуктов ({balanced} из {len(comparison_data)}) имеют сбалансированные предпочтения",
+                "priority": "success"
+            })
+
+        # Продукты с сильными предпочтениями
+        strong_male = [item for item in comparison_data if item["male_preference_ratio"] > 70]
+        strong_female = [item for item in comparison_data if item["female_preference_ratio"] > 70]
+
+        if strong_male:
+            top_male = max(strong_male, key=lambda x: x["male_preference_ratio"])
+            insights.append({
+                "type": "male_preference",
+                "message": f"Сильное предпочтение мужчин: {top_male['product']} ({top_male['male_preference_ratio']:.1f}%)",
+                "priority": "info"
+            })
+
+        if strong_female:
+            top_female = max(strong_female, key=lambda x: x["female_preference_ratio"])
+            insights.append({
+                "type": "female_preference",
+                "message": f"Сильное предпочтение женщин: {top_female['product']} ({top_female['female_preference_ratio']:.1f}%)",
+                "priority": "info"
+            })
+
+        return insights
+
+    def _generate_preferences_insights(self, male_top: List[Dict], female_top: List[Dict]) -> List[Dict[str, str]]:
+        """Генерация инсайтов для детального анализа предпочтений"""
+        insights = []
+
+        if male_top:
+            male_favorite = male_top[0]
+            insights.append({
+                "type": "male_top",
+                "message": f"Топ продукт среди мужчин: {male_favorite['product']} ({male_favorite['positive_ratio']:.1f}% позитивных отзывов)",
+                "priority": "info"
+            })
+
+        if female_top:
+            female_favorite = female_top[0]
+            insights.append({
+                "type": "female_top",
+                "message": f"Топ продукт среди женщин: {female_favorite['product']} ({female_favorite['positive_ratio']:.1f}% позитивных отзывов)",
+                "priority": "info"
+            })
+
+        # Сравнение удовлетворенности
+        if male_top and female_top:
+            male_avg_satisfaction = sum(item["satisfaction_score"] for item in male_top[:5]) / min(5, len(male_top))
+            female_avg_satisfaction = sum(item["satisfaction_score"] for item in female_top[:5]) / min(5,
+                                                                                                       len(female_top))
+
+            if abs(male_avg_satisfaction - female_avg_satisfaction) > 0.1:
+                if male_avg_satisfaction > female_avg_satisfaction:
+                    insights.append({
+                        "type": "satisfaction",
+                        "message": f"Мужчины более удовлетворены продуктами (разница: {(male_avg_satisfaction - female_avg_satisfaction):.2f})",
+                        "priority": "info"
+                    })
+                else:
+                    insights.append({
+                        "type": "satisfaction",
+                        "message": f"Женщины более удовлетворены продуктами (разница: {(female_avg_satisfaction - male_avg_satisfaction):.2f})",
+                        "priority": "info"
+                    })
+
+        return insights
 
     async def get_products_sentiment_analysis(
             self,
             filters: ProductsAnalysisFilters
     ) -> Dict[str, Any]:
         """Получить анализ продуктов по типам отзывов"""
-        try:
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+
             # Конвертируем Pydantic модели в словари (без mapping)
             products_filters = [
                 {"name": product.name, "type": product.type}  # type уже positive/negative/neutral
@@ -385,7 +547,7 @@ class DashboardService:
             ]
 
             # Получаем данные из репозитория
-            chart_data = await self.analytics_repo.get_products_sentiment_trends_data(
+            chart_data = await repo.get_products_sentiment_trends_data(
                 products_filters=products_filters,
                 date_from=filters.date_from,
                 date_to=filters.date_to,
@@ -428,17 +590,6 @@ class DashboardService:
                 },
                 "timestamp": datetime.now().isoformat()
             }
-        except Exception as e:
-            print(f"Ошибка в get_products_sentiment_analysis: {str(e)}")
-            return {
-                "chart_data": [],
-                "analysis_info": {"total_products_analyzed": 0, "date_range_days": 0, "period": "",
-                                  "most_analyzed_sentiment": "", "products_breakdown": []},
-                "filters_applied": {"region_code": filters.region_code, "city": filters.city, "products_count": 0},
-                "chart_config": {"title": "", "subtitle": "", "data_points": 0},
-                "timestamp": datetime.now().isoformat(),
-                "error": "Данные недоступны"
-            }
 
     async def get_reviews_trends_chart_data(
             self,
@@ -450,8 +601,10 @@ class DashboardService:
             group_by: str = "day"
     ) -> Dict[str, Any]:
         """Получить данные для графика трендов отзывов"""
-        try:
-            chart_data = await self.analytics_repo.get_reviews_trends_aggregated(
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+
+            chart_data = await repo.get_reviews_trends_aggregated(
                 region_code=region_code,
                 city=city,
                 product=product,
@@ -461,7 +614,6 @@ class DashboardService:
             )
 
             period_text = self._get_period_text(date_from, date_to)
-
             active_filters = []
             if region_code:
                 active_filters.append(f"Регион: {region_code}")
@@ -493,31 +645,17 @@ class DashboardService:
                 },
                 "timestamp": datetime.now().isoformat()
             }
-        except Exception as e:
-            print(f"Ошибка в get_reviews_trends_chart_data: {str(e)}")
-            return {
-                "chart_data": [],
-                "chart_config": {"title": "", "subtitle": "", "group_by": group_by, "data_points": 0},
-                "analytics": {"status": "no_data"},
-                "filters_applied": {"region_code": region_code, "city": city, "product": product,
-                                    "date_from": date_from.isoformat() if date_from else None,
-                                    "date_to": date_to.isoformat() if date_to else None, "group_by": group_by},
-                "timestamp": datetime.now().isoformat(),
-                "error": "Данные недоступны"
-            }
 
     def _get_period_text(self, date_from: Optional[datetime], date_to: Optional[datetime]) -> str:
         """Создать читаемый текст периода"""
         if not date_from and not date_to:
             return ""
-
         if date_from and date_to:
             return f"{date_from.strftime('%d.%m.%Y')} - {date_to.strftime('%d.%m.%Y')}"
         elif date_from:
             return f"с {date_from.strftime('%d.%m.%Y')}"
         elif date_to:
             return f"до {date_to.strftime('%d.%m.%Y')}"
-
         return ""
 
     def _analyze_trends_data(self, chart_data: List[List]) -> Dict[str, Any]:
@@ -555,88 +693,82 @@ class DashboardService:
 
     async def get_all_regions(self, include_cities: bool = False, ) -> Dict[str, Any]:
         """Получить все регионы"""
-        try:
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+
             if include_cities:
-                regions_data = await self.analytics_repo.get_regions_hierarchy()
+                regions_data = await repo.get_regions_hierarchy()
                 filtered_regions = [region for region in regions_data["regions"]]
                 regions_data["regions"] = filtered_regions
                 regions_data["total_regions"] = len(filtered_regions)
-
                 return {
                     "region_hierarchy": regions_data,
                     "include_cities": True,
                 }
             else:
-                regions = await self.analytics_repo.get_unique_regions()
+                regions = await repo.get_unique_regions()
                 regions = [region for region in regions]
-
                 return {
                     "regions": regions,
                     "total_regions": len(regions),
                     "include_cities": False,
                 }
-        except Exception as e:
-            print(f"Ошибка в get_all_regions: {str(e)}")
-            return {
-                "regions": [],
-                "total_regions": 0,
-                "include_cities": include_cities,
-                "error": "Данные недоступны"
-            }
 
     async def get_region_codes_only(self) -> Dict[str, Any]:
         """Получить только коды регионов"""
-        try:
-            region_codes = await self.analytics_repo.get_unique_region_codes()
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            region_codes = await repo.get_unique_region_codes()
             formatted_codes = [
                 {"value": code["region_code"], "label": code["region_code"], "count": code["reviews_count"]}
                 for code in region_codes]
-
             return {
                 "region_codes": region_codes,
                 "formatted_codes": formatted_codes,
                 "total_codes": len(region_codes),
                 "timestamp": datetime.now().isoformat()
             }
-        except Exception as e:
-            print(f"Ошибка в get_region_codes_only: {str(e)}")
-            return {
-                "region_codes": [],
-                "formatted_codes": [],
-                "total_codes": 0,
-                "timestamp": datetime.now().isoformat(),
-                "error": "Данные недоступны"
-            }
 
     async def get_regions_sentiment_map(self, include_cities: bool = False) -> Dict[str, Any]:
         """Получить регионы с sentiment анализом для карты"""
-        try:
-            regions_data = await self.analytics_repo.get_regions_with_sentiment_colors()
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            regions_data = await repo.get_regions_with_sentiment_colors()
+
+            if regions_data:
+                total_regions = len(regions_data)
+                positive_regions = len([r for r in regions_data if r["sentiment_score"] > 0.1])
+                negative_regions = len([r for r in regions_data if r["sentiment_score"] < -0.1])
+                best_region = max(regions_data, key=lambda x: x["sentiment_score"])
+                worst_region = min(regions_data, key=lambda x: x["sentiment_score"])
+
+                analytics = {
+                    "total_regions": total_regions,
+                    "positive_regions": positive_regions,
+                    "negative_regions": negative_regions,
+                    "best_region": best_region,
+                    "worst_region": worst_region
+                }
+            else:
+                analytics = {}
 
             response = {
                 "regions": regions_data,
                 "total_regions": len(regions_data),
                 "include_cities": include_cities,
+                "analytics": analytics,
                 "color_scheme": {"positive": "#228B22", "neutral": "#E2B007", "negative": "#FA8072"},
             }
 
             return response
-        except Exception as e:
-            print(f"Ошибка в get_regions_sentiment_map: {str(e)}")
-            return {
-                "regions": [],
-                "total_regions": 0,
-                "include_cities": include_cities,
-                "color_scheme": {"positive": "#228B22", "neutral": "#E2B007", "negative": "#FA8072"},
-                "error": "Данные недоступны"
-            }
 
     # ========== УТИЛИТЫ ==========
 
     async def _get_quick_insights(self, filters: Optional[ReviewFilters] = None) -> Dict[str, Any]:
         """Получить быстрые инсайты"""
-        try:
-            sentiment_data = await self.analytics_repo.get_sentiment_distribution(filters)
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            sentiment_data = await repo.get_sentiment_distribution(filters)
             total = sum(sentiment_data.values())
             insights = []
 
@@ -658,38 +790,22 @@ class DashboardService:
                 "insights_count": len(insights),
                 "data_quality": "good" if total > 100 else "limited"
             }
-        except Exception as e:
-            print(f"Ошибка в _get_quick_insights: {str(e)}")
-            return {
-                "insights": [],
-                "insights_count": 0,
-                "data_quality": "limited"
-            }
 
     async def _get_performance_metrics(self) -> Dict[str, Any]:
         """Получить метрики производительности"""
-        try:
-            regions_count = len(await self.analytics_repo.get_unique_regions())
-
+        async with async_session() as session:
+            repo = ReviewAnalyticsRepository(session)
+            regions_count = len(await repo.get_unique_regions())
             return {
                 "data_freshness": "excellent",
                 "processing_speed": "fast",
                 "coverage": {"regions_covered": regions_count},
                 "data_completeness": 95.5
             }
-        except Exception as e:
-            print(f"Ошибка в _get_performance_metrics: {str(e)}")
-            return {
-                "data_freshness": "limited",
-                "processing_speed": "unknown",
-                "coverage": {"regions_covered": 0},
-                "data_completeness": 0
-            }
 
     async def _generate_regional_insights(self, regional_stats: List[Dict]) -> List[Dict[str, Any]]:
         """Генерировать региональные инсайты"""
         insights = []
-
         if regional_stats:
             top_region = max(regional_stats, key=lambda x: x["total_count"])
             insights.append({
