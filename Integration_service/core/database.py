@@ -26,4 +26,7 @@ class Base(AsyncAttrs, DeclarativeBase):
 
 async def get_async_session() -> AsyncSession:
     async with async_session() as session:
-        yield session
+        try:
+            yield session
+        finally:
+            await session.close()

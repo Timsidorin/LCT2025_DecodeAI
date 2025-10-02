@@ -20,10 +20,10 @@ class ReviewMonitoringService:
     def __init__(self,
                  telegram_bot_url: str = None,
                  notification_threshold: int = 5,
-                 check_interval_minutes: int = 2):  # Оставляем 2 минуты для тестирования
+                 check_interval_minutes: int = 2):
 
         self.telegram_bot_url = telegram_bot_url or getattr(configs, 'TELEGRAM_BOT_URL',
-                                                            "http://localhost:8008/send-notification")
+                                                            "http://localhost:8010/send-notification")
         self.notification_threshold = notification_threshold
         self.check_interval_minutes = check_interval_minutes
         self.scheduler = AsyncIOScheduler()
